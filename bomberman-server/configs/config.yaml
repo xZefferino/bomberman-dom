@@ -1,0 +1,16 @@
+server:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 120s
+
+game:
+  max_players: 4
+  map_size: 
+    width: 15
+    height: 15
+  powerup_spawn_rate: 0.1
+
+websocket:
+  ping_interval: 30s
+  max_message_size: 512

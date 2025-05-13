@@ -18,11 +18,15 @@ var upgrader = gorillaws.Upgrader{
 
 // handleWebSocket handles WebSocket connections
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	log.Println("WebSocket connection request received")
+    
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Error upgrading connection:", err)
 		return
 	}
+    
+	log.Println("WebSocket connection established")
 
 	client := &websocket.Client{
 		Hub:  s.Hub,
@@ -31,6 +35,7 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Hub.Register <- client
+	log.Println("Client registered with hub")
 
 	// Start goroutines for reading and writing messages
 	go client.ReadMessages()

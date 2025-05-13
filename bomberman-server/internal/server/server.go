@@ -34,6 +34,23 @@ func NewServer() *Server {
 
 // SetupRoutes configures the server routes
 func (s *Server) SetupRoutes() {
+    // Add CORS middleware
+    s.Router.Use(func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Header().Set("Access-Control-Allow-Origin", "*")
+            w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+            w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            
+            if r.Method == "OPTIONS" {
+                w.WriteHeader(http.StatusOK)
+                return
+            }
+            
+            next.ServeHTTP(w, r)
+        })
+    })
+    
+    // Existing routes
     s.Router.HandleFunc("/ws", s.handleWebSocket)
     s.Router.HandleFunc("/api/game/join", s.handleJoinGame).Methods("POST")
     s.Router.HandleFunc("/api/game/status", s.handleGameStatus).Methods("GET")

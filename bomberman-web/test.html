@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+    <style>
+        body { background-color: white; color: #333; padding: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Test Page</h1>
+    <p>If you can see this, your server is working correctly.</p>
+    
+    <div id="test"></div>
+    
+    <script type="module">
+        import { h, render } from '../framework/index.js';
+        
+        const element = h('div', {}, 
+            h('h2', {}, 'Framework Test'),
+            h('p', {}, 'If you can see this, your framework is working!')
+        );
+        
+        render(element, document.getElementById('test'));
+        console.log("Test script executed");
+    </script>
+</body>
+</html>

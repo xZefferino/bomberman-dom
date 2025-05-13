@@ -16,6 +16,7 @@ const (
 	Empty BlockType = iota
 	Wall
 	Destructible
+	Indestructible
 )
 
 type GameMap struct {
@@ -41,6 +42,8 @@ func (gm *GameMap) generateMap() {
 		for x := 0; x < MapWidth; x++ {
 			if x == 0 || x == MapWidth-1 || y == 0 || y == MapHeight-1 {
 				gm.Blocks[y][x] = Wall
+			} else if x%2 == 0 && y%2 == 0 {
+				gm.Blocks[y][x] = Indestructible // classic interior wall
 			} else if rand.Float32() < 0.3 {
 				gm.Blocks[y][x] = Destructible
 			} else {
@@ -49,6 +52,7 @@ func (gm *GameMap) generateMap() {
 		}
 	}
 }
+
 
 func (gm *GameMap) PlacePlayer(player *Player, x, y int) bool {
 	if gm.Blocks[y][x] == Empty {

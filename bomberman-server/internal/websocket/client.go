@@ -124,6 +124,16 @@ func (c *Client) handleMessage(message Message) {
 		c.ID = message.PlayerID
 		c.Nickname = payload.Nickname
 
+		// Notify all clients of the new player count
+		c.Hub.mutex.RLock()
+		count := len(c.Hub.clients)
+		c.Hub.mutex.RUnlock()
+		playerCountMsg, _ := json.Marshal(map[string]interface{}{
+			"type":  "player_count",
+			"count": count,
+		})
+		c.Hub.broadcastMessage(playerCountMsg)
+
 	case "chat":
 		var payload ChatMessage
 		if err := json.Unmarshal(message.Payload, &payload); err != nil {

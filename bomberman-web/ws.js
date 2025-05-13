@@ -1,33 +1,44 @@
-// WebSocket connection logic
 let socket = null;
+let hasJoined = false;  // ✅ now it's local here
 
-function connectWebSocket(nickname, onMessage) {
-    socket = new WebSocket('ws://localhost:8080/ws'); // Adjust port if needed
+function connectWebSocket(nickname, playerId, onMessage) {
+    socket = new WebSocket('ws://localhost:8080/ws');
     socket.onopen = () => {
-        // The backend expects a Message with type, playerId, payload
         const msg = {
             type: 'join',
-            playerId: '',
-            payload: JSON.stringify({ nickname })
+            playerId: playerId,
+            payload: { nickname }  // ✅ already fixed
         };
         socket.send(JSON.stringify(msg));
     };
+
     socket.onmessage = (event) => {
-        // Some servers send multiple JSON objects separated by newlines
         const messages = event.data.split('\n');
         for (const msg of messages) {
             if (!msg.trim()) continue;
             try {
                 const data = JSON.parse(msg);
+
+                if (data.type === "join_ack") {
+                    console.log("✅ Got join_ack:", data.payload);
+                    hasJoined = true;  // ✅ now correctly scoped
+                    continue;
+                }
+
                 onMessage(data);
             } catch (e) {
-                // Ignore parse errors for empty lines or partial messages
+                console.error("Failed to parse WS message:", msg, e);
             }
         }
     };
+
     socket.onclose = () => {
-        // handle disconnect
+        hasJoined = false;
     };
 }
 
-export { connectWebSocket, socket };
+function isJoined() {
+    return hasJoined;
+}
+
+export { connectWebSocket, socket, isJoined };  // ✅ expose isJoined()

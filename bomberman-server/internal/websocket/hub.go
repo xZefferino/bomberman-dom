@@ -138,22 +138,48 @@ func (h *Hub) SendGameState() {
 	h.broadcastMessage(message)
 }
 
+// Add this helper to get player number by ID
+func (h *Hub) GetPlayerNumber(playerID string) int {
+	h.game.Mutex.RLock()
+	defer h.game.Mutex.RUnlock()
+	i := 1
+	for id := range h.game.Players {
+		if id == playerID {
+			return i
+		}
+		i++
+	}
+	return 0 // not found
+}
+
 // SendChatMessage sends a chat message from one player to all clients
 func (h *Hub) SendChatMessage(playerID, playerName, message string) {
-	chatMsg, err := json.Marshal(map[string]interface{}{
-		"type":       "chat",
-		"playerID":   playerID,
-		"playerName": playerName,
-		"message":    message,
-		"timestamp":  time.Now().Format(time.RFC3339),
-	})
-
-	if err != nil {
-		log.Println("Error marshaling chat message:", err)
-		return
+	if playerName == "" {
+		// Try to get from game state
+		h.game.Mutex.RLock()
+		if player, ok := h.game.Players[playerID]; ok {
+			playerName = player.Nickname
+		}
+		h.game.Mutex.RUnlock()
 	}
+	payload := map[string]interface{}{
+		"playerId":     playerID,
+		"playerName":   playerName,
+		"playerNumber": h.GetPlayerNumber(playerID),
+		"message":      message,
+	}
+	msg := Message{
+		Type:    "chat",
+		Payload: mustMarshal(payload),
+	}
+	data, _ := json.Marshal(msg)
+	h.broadcastMessage(data)
+}
 
-	h.broadcastMessage(chatMsg)
+// Helper to marshal payload
+func mustMarshal(v interface{}) json.RawMessage {
+	b, _ := json.Marshal(v)
+	return b
 }
 
 // HandlePlayerAction processes player actions

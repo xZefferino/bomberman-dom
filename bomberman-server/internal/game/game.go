@@ -24,7 +24,7 @@ type Game struct {
 	PowerUps  map[string]PowerUp
 	State     GameState
 	StartTime time.Time
-	mutex     sync.RWMutex
+	Mutex     sync.RWMutex
 
 	// Timers for game flow
 	CountdownTimer time.Time
@@ -44,9 +44,9 @@ func NewGame() *Game {
 }
 
 // AddPlayer adds a new player to the game
-func (g *Game) AddPlayer(nickname string) (*Player, error) {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
 
 	if len(g.Players) >= 4 {
 		return nil, errors.New("game is full")
@@ -65,7 +65,6 @@ func (g *Game) AddPlayer(nickname string) (*Player, error) {
 		startX, startY = MapWidth-2, MapHeight-2
 	}
 
-	id := GenerateUUID()
 	player := NewPlayer(id, nickname, startX, startY)
 	g.Players[id] = player
 
@@ -85,8 +84,8 @@ func (g *Game) AddPlayer(nickname string) (*Player, error) {
 
 // PlaceBomb places a bomb for a player
 func (g *Game) PlaceBomb(playerID string) error {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
 
 	player, exists := g.Players[playerID]
 	if !exists {
@@ -104,8 +103,8 @@ func (g *Game) PlaceBomb(playerID string) error {
 
 // MovePlayer moves a player in the specified direction
 func (g *Game) MovePlayer(playerID string, dx, dy int) error {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
 
 	player, exists := g.Players[playerID]
 	if !exists {
@@ -127,8 +126,8 @@ func (g *Game) MovePlayer(playerID string, dx, dy int) error {
 
 // Update updates the game state
 func (g *Game) Update() {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
 
 	now := time.Now()
 
@@ -211,4 +210,31 @@ func (g *Game) processExplosion(explosion *Explosion) {
 			}
 		}
 	}
+}
+
+// PlayerNumbers returns a map of player IDs to their assigned numbers
+func (g *Game) PlayerNumbers() map[string]int {
+	g.Mutex.RLock()
+	defer g.Mutex.RUnlock()
+	numbers := make(map[string]int)
+	i := 1
+	for id := range g.Players {
+		numbers[id] = i
+		i++
+	}
+	return numbers
+}
+
+// GetPlayerNumber returns the assigned number of a specific player
+func (g *Game) GetPlayerNumber(playerID string) int {
+	g.Mutex.RLock()
+	defer g.Mutex.RUnlock()
+	i := 1
+	for id := range g.Players {
+		if id == playerID {
+			return i
+		}
+		i++
+	}
+	return 0
 }

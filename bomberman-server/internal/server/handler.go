@@ -1,11 +1,11 @@
 package server
 
 import (
+	"bomberman-server/internal/websocket"
+	"bomberman-server/internal/game"
 	"encoding/json"
 	"log"
 	"net/http"
-
-	"bomberman-server/internal/websocket"
 
 	gorillaws "github.com/gorilla/websocket"
 )
@@ -19,13 +19,13 @@ var upgrader = gorillaws.Upgrader{
 // handleWebSocket handles WebSocket connections
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	log.Println("WebSocket connection request received")
-    
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Error upgrading connection:", err)
 		return
 	}
-    
+
 	log.Println("WebSocket connection established")
 
 	client := &websocket.Client{
@@ -50,13 +50,20 @@ func (s *Server) handleJoinGame(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
-		http.Error(w, "Bad request", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid JSON payload",
+		})
 		return
 	}
 
-	player, err := s.Game.AddPlayer(request.Nickname)
+	playerID := game.GenerateUUID()
+	player, err := s.Game.AddPlayer(playerID, request.Nickname)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),  // returns "game is full" as JSON
+		})
 		return
 	}
 
@@ -68,6 +75,7 @@ func (s *Server) handleJoinGame(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
 
 // handleGameStatus returns the current game status
 func (s *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {

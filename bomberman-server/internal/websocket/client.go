@@ -10,20 +10,12 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer
-	writeWait = 10 * time.Second
-
-	// Time allowed to read the next pong message from the peer
-	pongWait = 60 * time.Second
-
-	// Send pings to peer with this period
-	pingPeriod = (pongWait * 9) / 10
-
-	// Maximum message size allowed
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
 	maxMessageSize = 512
 )
 
-// Client represents a connected websocket client
 type Client struct {
 	ID       string
 	Nickname string
@@ -33,7 +25,6 @@ type Client struct {
 	mu       sync.Mutex
 }
 
-// ReadMessages pumps messages from the websocket connection to the hub
 func (c *Client) ReadMessages() {
 	defer func() {
 		c.Hub.Unregister <- c
@@ -66,8 +57,8 @@ func (c *Client) ReadMessages() {
 	}
 }
 
-// WriteMessages pumps messages from the hub to the websocket connection
 func (c *Client) WriteMessages() {
+	log.Printf("Started WriteMessages for client")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -79,7 +70,6 @@ func (c *Client) WriteMessages() {
 		case message, ok := <-c.Send:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The hub closed the channel
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -90,7 +80,6 @@ func (c *Client) WriteMessages() {
 			}
 			w.Write(message)
 
-			// Add queued messages to the current websocket message
 			n := len(c.Send)
 			for i := 0; i < n; i++ {
 				w.Write([]byte{'\n'})
@@ -110,26 +99,55 @@ func (c *Client) WriteMessages() {
 	}
 }
 
-// handleMessage processes received messages
 func (c *Client) handleMessage(message Message) {
+	log.Printf("handleMessage: type=%s, playerId=%s, payload=%s", message.Type, message.PlayerID, string(message.Payload))
 	switch message.Type {
 	case "join":
 		var payload struct {
 			Nickname string `json:"nickname"`
 		}
 		if err := json.Unmarshal(message.Payload, &payload); err != nil {
+			log.Printf("Failed to unmarshal join payload: %v", err)
 			return
 		}
 
 		c.ID = message.PlayerID
 		c.Nickname = payload.Nickname
+		log.Printf("Registering player: %s (%s)", c.Nickname, c.ID)
 
-	case "chat":
-		var payload ChatMessage
-		if err := json.Unmarshal(message.Payload, &payload); err != nil {
+		// Always attempt AddPlayer, but still send join_ack even if it fails
+		_, err := c.Hub.game.AddPlayer(c.ID, c.Nickname)
+		if err != nil {
+			log.Printf("AddPlayer error: %v", err)
+			// Still continue — this may be a reconnect or game full, but we want chat to work
+		}
+
+		ack := Message{
+			Type: "join_ack",
+			Payload: mustMarshal(map[string]string{
+				"nickname": c.Nickname,
+				"playerId": c.ID,
+			}),
+		}
+		data, err := json.Marshal(ack)
+		if err != nil {
+			log.Printf("Failed to marshal join_ack: %v", err)
 			return
 		}
 
+		log.Printf("✅ Sending join_ack to %s with nickname %s", c.ID, c.Nickname)
+		c.Send <- data
+
+
+	case "chat":
+		log.Printf("Received chat message: %s", string(message.Payload))
+		var payload ChatMessage
+		if err := json.Unmarshal(message.Payload, &payload); err != nil {
+			log.Printf("Failed to unmarshal chat payload: %v", err)
+			return
+		}
+		log.Printf("Parsed chat payload: %+v", payload)
+		log.Printf("Sending chat from ID=%s name=%s", c.ID, c.Nickname)
 		c.Hub.SendChatMessage(c.ID, c.Nickname, payload.Message)
 
 	case "action":
@@ -137,8 +155,7 @@ func (c *Client) handleMessage(message Message) {
 		if err := json.Unmarshal(message.Payload, &payload); err != nil {
 			return
 		}
-
-		// Pass the action to the game for processing
 		c.Hub.HandlePlayerAction(payload)
 	}
 }
+

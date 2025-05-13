@@ -1,5 +1,5 @@
 // Lobby UI using mini-framework
-import { connectWebSocket } from './main.js';
+import { connectWebSocket } from './ws.js';
 
 let nickname = '';
 let playerCount = 1;
@@ -11,12 +11,16 @@ function renderLobby(root, { onJoin }) {
             <label>Nickname: <input id="nickname-input" type="text" maxlength="12" autofocus /></label>
             <button id="join-btn">Join Game</button>
             <div id="player-count">Players: ${playerCount}/4</div>
+            <div id="lobby-status"></div>
         </div>
     `;
     document.getElementById('join-btn').onclick = () => {
         nickname = document.getElementById('nickname-input').value.trim();
         if (nickname) {
             onJoin(nickname);
+            document.getElementById('lobby-status').textContent = "Waiting for other players...";
+            document.getElementById('join-btn').disabled = true;
+            document.getElementById('nickname-input').disabled = true;
         }
     };
     document.getElementById('nickname-input').addEventListener('keydown', (e) => {

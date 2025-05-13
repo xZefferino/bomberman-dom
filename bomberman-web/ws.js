@@ -13,8 +13,17 @@ function connectWebSocket(nickname, onMessage) {
         socket.send(JSON.stringify(msg));
     };
     socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        onMessage(data);
+        // Some servers send multiple JSON objects separated by newlines
+        const messages = event.data.split('\n');
+        for (const msg of messages) {
+            if (!msg.trim()) continue;
+            try {
+                const data = JSON.parse(msg);
+                onMessage(data);
+            } catch (e) {
+                // Ignore parse errors for empty lines or partial messages
+            }
+        }
     };
     socket.onclose = () => {
         // handle disconnect

@@ -53,6 +53,16 @@ func (h *Hub) Run() {
 			h.mutex.Unlock()
 			log.Println("New client connected")
 
+			// Broadcast updated player count after registration
+			h.mutex.RLock()
+			count := len(h.clients)
+			h.mutex.RUnlock()
+			playerCountMsg, _ := json.Marshal(map[string]interface{}{
+				"type":  "player_count",
+				"count": count,
+			})
+			h.broadcastMessage(playerCountMsg)
+
 		case client := <-h.Unregister:
 			h.mutex.Lock()
 			if _, ok := h.clients[client]; ok {

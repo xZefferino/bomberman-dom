@@ -2,6 +2,7 @@ package game
 
 import (
 	"errors"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -56,25 +57,28 @@ func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
 	var startX, startY int
 	switch len(g.Players) {
 	case 0: // Top left
-		startX, startY = 1, 1
+		startX, startY = 2, 2
 	case 1: // Top right
-		startX, startY = MapWidth-2, 1
+		startX, startY = MapWidth-3, 2
 	case 2: // Bottom left
-		startX, startY = 1, MapHeight-2
+		startX, startY = 2, MapHeight-3
 	case 3: // Bottom right
-		startX, startY = MapWidth-2, MapHeight-2
+		startX, startY = MapWidth-3, MapHeight-3
 	}
 
 	player := NewPlayer(id, nickname, startX, startY)
+	player.Number = len(g.Players) + 1 // Assign a fixed number
 	g.Players[id] = player
 
-	// Start the waiting timer when we have 2+ players
-	if len(g.Players) == 2 {
-		g.WaitingTimer = time.Now().Add(20 * time.Second)
+	// ✅ Start waiting timer once when we reach 2 or more players
+	if len(g.Players) >= 2 && g.WaitingTimer.IsZero() {
+		log.Println("2+ players joined, starting waiting timer...")
+		g.WaitingTimer = time.Now().Add(10 * time.Second)
 	}
 
-	// If 4 players have joined, start the countdown immediately
+	// ✅ If 4 players join, transition immediately
 	if len(g.Players) == 4 {
+		log.Println("Game full with 4 players, starting countdown immediately...")
 		g.State = GameCountdown
 		g.CountdownTimer = time.Now().Add(10 * time.Second)
 	}
@@ -134,8 +138,8 @@ func (g *Game) Update() {
 	// Handle game state transitions
 	switch g.State {
 	case GameWaiting:
-		// If we have at least 2 players and waiting timer has expired
 		if len(g.Players) >= 2 && !g.WaitingTimer.IsZero() && now.After(g.WaitingTimer) {
+			log.Println("Transitioning to GameCountdown")
 			g.State = GameCountdown
 			g.CountdownTimer = now.Add(10 * time.Second)
 		}
@@ -143,6 +147,7 @@ func (g *Game) Update() {
 	case GameCountdown:
 		// Start the game when countdown is over
 		if now.After(g.CountdownTimer) {
+			log.Println("Transitioning to GameRunning")
 			g.State = GameRunning
 			g.StartTime = now
 		}
@@ -163,6 +168,12 @@ func (g *Game) Update() {
 			g.State = GameFinished
 		}
 	}
+
+	g.Map.Players = make([]*Player, 0, len(g.Players))
+	for _, p := range g.Players {
+		g.Map.Players = append(g.Map.Players, p)
+	}
+	// Now marshal and send the state
 }
 
 // processBombs handles bomb explosions

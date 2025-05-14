@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"bomberman-server/internal/game"
 	"encoding/json"
 )
 
@@ -27,10 +28,11 @@ type ChatMessage struct {
 
 // GameStateUpdate represents the current state of the game
 type GameStateUpdate struct {
-	State       int         `json:"state"`
-	Players     interface{} `json:"players"`
-	Bombs       interface{} `json:"bombs"`
-	PowerUps    interface{} `json:"powerUps"`
-	Countdown   int         `json:"countdown,omitempty"`
-	ElapsedTime int         `json:"elapsedTime,omitempty"`
+	State       int           `json:"state"`
+	Players     interface{}   `json:"players"`
+	Bombs       interface{}   `json:"bombs"`
+	PowerUps    interface{}   `json:"powerUps"`
+	Countdown   int           `json:"countdown,omitempty"`
+	ElapsedTime int           `json:"elapsedTime,omitempty"`
+	Map         *game.GameMap `json:"map"` 
 }

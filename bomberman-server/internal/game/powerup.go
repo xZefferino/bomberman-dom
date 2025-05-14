@@ -9,13 +9,6 @@ type PowerUp struct {
 	Position Position
 }
 
-// Position represents the coordinates of the power-up on the game map.
-type Position struct {
-	X int
-	Y int
-}
-
-// PowerUp types
 const (
 	PowerUpSpeed = "speed" // Increases movement speed
 	PowerUpBomb  = "bomb"  // Increases the amount of bombs dropped at a time by 1

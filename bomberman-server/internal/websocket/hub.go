@@ -8,6 +8,8 @@ import (
 
 	"bomberman-server/internal/game"
 )
+var loggedOnce = false
+// var lastLogTime time.Time
 
 // Hub maintains the set of active clients and broadcasts messages to the clients
 type Hub struct {
@@ -80,10 +82,11 @@ func (h *Hub) Run() {
 			h.broadcastMessage(message)
 
 		case <-ticker.C:
-			// Update game state
 			h.game.Update()
-
-			// Broadcast updated game state
+			if !loggedOnce {
+				log.Printf("Sending GameState. Map nil? %v", h.game.Map == nil)
+				loggedOnce = true
+			}
 			h.SendGameState()
 		}
 	}
@@ -107,22 +110,20 @@ func (h *Hub) broadcastMessage(message []byte) {
 // SendGameState sends the current game state to all connected clients
 func (h *Hub) SendGameState() {
 	// Create game state update message
-	update := GameStateUpdate{
-		State:    int(h.game.State),
-		Players:  h.game.Players,
-		Bombs:    h.game.Bombs,
-		PowerUps: h.game.PowerUps,
-	}
+			update := GameStateUpdate{
+			State:     int(h.game.State),
+			Players:   h.game.Players,
+			Bombs:     h.game.Bombs,
+			PowerUps:  h.game.PowerUps,
+			Map:       h.game.Map, // ✅ This must not be nil
+		}
 
-	// Add timing information based on game state
-	switch h.game.State {
-	case game.GameCountdown:
-		countdown := int(time.Until(h.game.CountdownTimer).Seconds())
-		update.Countdown = countdown
-	case game.GameRunning:
-		elapsed := int(time.Since(h.game.StartTime).Seconds())
-		update.ElapsedTime = elapsed
-	}
+		switch h.game.State {
+		case game.GameCountdown:
+			update.Countdown = int(time.Until(h.game.CountdownTimer).Seconds())
+		case game.GameRunning:
+			update.ElapsedTime = int(time.Since(h.game.StartTime).Seconds())
+		}
 
 	// Convert to JSON
 	message, err := json.Marshal(map[string]interface{}{
@@ -136,6 +137,8 @@ func (h *Hub) SendGameState() {
 	}
 
 	h.broadcastMessage(message)
+	// log.Printf("Sending GameState. Map nil? %v", h.game.Map == nil)
+
 }
 
 // Add this helper to get player number by ID

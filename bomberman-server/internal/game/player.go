@@ -1,14 +1,22 @@
 package game
 
+type Position struct {
+    X int `json:"x"`
+    Y int `json:"y"`
+}
+
 type Player struct {
-	ID          string
-	Nickname    string
-	Position    Position
-	Lives       int
-	Speed       float64
-	MaxBombs    int
-	BombPower   int
-	ActiveBombs int
+	ID          string   `json:"id"`
+	Nickname    string   `json:"nickname"`
+	Position    Position `json:"position"`
+	Lives       int      `json:"lives"`
+	Speed       float64  `json:"speed"`
+	MaxBombs    int      `json:"maxBombs"`
+	BombPower   int      `json:"bombPower"`
+	ActiveBombs int      `json:"activeBombs"`
+	Direction   string   `json:"direction"`
+	Frame       int      `json:"frame"`
+	Number      int      `json:"number"` // <-- add this
 }
 
 // NewPlayer creates a new player with default values
@@ -25,19 +33,32 @@ func NewPlayer(id, nickname string, startX, startY int) *Player {
 	}
 }
 
-func (p *Player) Move(x, y int, gameMap *GameMap) bool {
+func (p *Player) Move(dx, dy int, gameMap *GameMap) bool {
 	newPos := Position{
-		X: p.Position.X + x,
-		Y: p.Position.Y + y,
+		X: p.Position.X + dx,
+		Y: p.Position.Y + dy,
 	}
 
-	// Check if the new position is valid and not blocked
-	if gameMap.IsValidPosition(newPos) && !gameMap.IsWall(newPos) && !gameMap.IsDestructible(newPos) {
+	if gameMap.IsValidPosition(newPos) && gameMap.IsEmpty(newPos) {
 		p.Position = newPos
+
+		// Set direction based on input
+		switch {
+		case dx == 1:
+			p.Direction = "right"
+		case dx == -1:
+			p.Direction = "left"
+		case dy == 1:
+			p.Direction = "down"
+		case dy == -1:
+			p.Direction = "up"
+		}
+		
 		return true
 	}
 	return false
 }
+
 
 func (p *Player) PlaceBomb(gameMap *GameMap) *Bomb {
 	if p.ActiveBombs >= p.MaxBombs {

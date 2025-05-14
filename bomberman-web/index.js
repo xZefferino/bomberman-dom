@@ -1,15 +1,12 @@
-// Entry point for Bomberman web app
 import { renderLobby, updatePlayerCount, appendChatMessage } from './lobby.js';
 import { connectWebSocket, socket, isJoined } from './ws.js';
 import { renderGame } from './game.js';
 
-let animationFrame = 0;
-
+let activeAnimations = {};
 let localFrames = {};
 let lastPositions = {};
 let lastFrameTime = 0;
-const FRAME_INTERVAL = 100;
-let keysPressed = {};
+const FRAME_INTERVAL = 35;
 
 const root = document.getElementById('app');
 let currentNickname = '';
@@ -86,85 +83,89 @@ function handleWSMessage(data) {
 
 function startGameLoop() {
     function loop(timestamp) {
-    if (!inGame) return;
+        if (!inGame) return;
 
-    const gameRoot = document.getElementById('game-root');
-    if (gameState && gameRoot) {
-        if (!lastFrameTime) lastFrameTime = timestamp;
-        const elapsed = timestamp - lastFrameTime;
+        const gameRoot = document.getElementById('game-root');
+        if (gameState && gameRoot) {
+            if (!lastFrameTime) lastFrameTime = timestamp;
+            const elapsed = timestamp - lastFrameTime;
 
-        // Clone the players array to safely inject frames
-        const clonedPlayers = gameState.state.map.players.map((p) => {
-            const id = p.id || p.ID;
-            const key = id;
-            const last = lastPositions[key] || {};
-            const moved = !last || last.x !== p.position.x || last.y !== p.position.y;
-            const isSelf = id === currentPlayerID;
+            const clonedPlayers = gameState.state.map.players.map((p) => {
+                const id = p.id || p.ID;
+                const key = id;
+                const last = lastPositions[key] || {};
+                const moved = !last || last.x !== p.position.x || last.y !== p.position.y;
 
-            const holdingKey = keysPressed['ArrowUp'] || keysPressed['w'] ||
-                               keysPressed['ArrowDown'] || keysPressed['s'] ||
-                               keysPressed['ArrowLeft'] || keysPressed['a'] ||
-                               keysPressed['ArrowRight'] || keysPressed['d'];
+                if (!localFrames[key]) localFrames[key] = 0;
+               if (activeAnimations[key]) {
+                const anim = activeAnimations[key];
+                const timeSinceStart = timestamp - anim.startTime;
 
-            if (!localFrames[key]) localFrames[key] = 0;
+                const frame = Math.floor(timeSinceStart / FRAME_INTERVAL);
 
-            if ((isSelf && holdingKey) || (!isSelf && moved)) {
-                localFrames[key] = (localFrames[key] + 1) % 9;
+                if (frame < 9) {
+                    localFrames[key] = frame;
+                } else {
+                    localFrames[key] = 0;
+                    delete activeAnimations[key];
+                }
             }
 
-            lastPositions[key] = { x: p.position.x, y: p.position.y };
+                lastPositions[key] = { x: p.position.x, y: p.position.y };
 
-            // Inject the animation frame without mutating gameState
-            return { ...p, frame: localFrames[key] };
-        });
+                return { ...p, frame: localFrames[key] };
+            });
 
-        if (elapsed > FRAME_INTERVAL) {
-            lastFrameTime = timestamp;
+            if (elapsed > FRAME_INTERVAL) {
+                lastFrameTime = timestamp;
+            }
+
+            const localState = {
+                ...gameState,
+                state: {
+                    ...gameState.state,
+                    map: {
+                        ...gameState.state.map,
+                        players: clonedPlayers
+                    }
+                }
+            };
+
+            renderGame(gameRoot, localState, currentPlayerID);
         }
 
-        // Inject cloned players with frame into map copy
-        const localState = {
-            ...gameState,
-            state: {
-                ...gameState.state,
-                map: {
-                    ...gameState.state.map,
-                    players: clonedPlayers
-                }
+        requestAnimationFrame(loop);
+    }
+
+    // 🔁 TAP-ONLY MOVEMENT
+        window.onkeydown = (e) => {
+            if (e.repeat || !inGame || !isJoined() || !currentPlayerID) return;
+
+            let action = null;
+            if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
+            else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
+            else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
+            else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
+            else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
+
+            // ✅ Trigger full animation cycle for movement keys
+            if (action && action.startsWith('move')) {
+                activeAnimations[currentPlayerID] = {
+                    frameIndex: 0,
+                    startTime: performance.now()
+                };
+            }
+
+            if (action) {
+                socket.send(JSON.stringify({
+                    type: 'action',
+                    playerId: currentPlayerID,
+                    payload: { playerId: currentPlayerID, action }
+                }));
+                e.preventDefault();
             }
         };
 
-        renderGame(gameRoot, localState, currentPlayerID);
-    }
-
-    requestAnimationFrame(loop);
-}
-
-
-    window.onkeydown = (e) => {
-        if (!inGame || !isJoined() || !currentPlayerID) return;
-        keysPressed[e.key] = true;
-
-        let action = null;
-        if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
-        else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
-        else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
-        else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
-        else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
-
-        if (action) {
-            socket.send(JSON.stringify({
-                type: 'action',
-                playerId: currentPlayerID,
-                payload: { playerId: currentPlayerID, action }
-            }));
-            e.preventDefault();
-        }
-    };
-
-    window.onkeyup = (e) => {
-        keysPressed[e.key] = false;
-    };
 
     loop();
 }

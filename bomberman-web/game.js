@@ -1,6 +1,7 @@
 import { h, render } from '../framework/index.js';
 import { renderCharacterSprite } from './character.js';
 import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './bomb.js';
+import { renderPowerUpSprite } from './power.js';
 
 
 // Map block types (must match backend)
@@ -88,6 +89,11 @@ function Tile({ type, x, y, player, isSelf }) {
 
 // Render the whole board
 export function GameBoard({ map, players, selfId, countdown, bombs }) {
+    // Try different ways to access powerUps
+    const powerUps = map.powerUps || [];
+    
+    console.log("PowerUps being rendered:", powerUps);
+
     const playerGrid = {};
     players.forEach((p) => {
         const pos = p.position || p.Position;
@@ -141,6 +147,30 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
                 }, h(sprite.tag, sprite.attrs));
             })),
 
+           ...(powerUps.map((p) => {
+                console.log("Rendering power-up:", p);
+                // Handle both position and Position (case-insensitive)
+                const position = p.position || p.Position;
+                
+                if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') {
+                    console.error("Invalid power-up position:", p);
+                    return null;
+                }
+                
+                const sprite = renderPowerUpSprite({ type: p.type || p.Type });
+                return h('div', {
+                    key: `powerup-${p.id || p.ID || `pos-${position.x}-${position.y}`}`,
+                    style: `
+                        position: absolute;
+                        left: ${position.x * TILE_SIZE}px;
+                        top: ${position.y * TILE_SIZE}px;
+                        width: ${TILE_SIZE}px;
+                        height: ${TILE_SIZE}px;
+                        z-index: 3;
+                    `
+                }, h(sprite.tag, sprite.attrs));
+            }).filter(Boolean)),
+
             // 🧍 Render players absolutely on top
             ...players.map((p) => {
                 const pos = p.position || p.Position;
@@ -180,19 +210,30 @@ export function renderGame(root, gameState, selfId) {
     const state = gameState.state;
 
     console.log("✅ Full state object received:", state);
-
+    // Check where power-ups are in the state structure
+    console.log("PowerUps in state:", state.powerUps);
+    console.log("PowerUps in map:", state.map?.powerUps);
+    
     if (!state || !state.map || !Array.isArray(state.map.blocks) || state.map.blocks.length === 0) {
         render(h('div', {}, '⚠️ Waiting for game to start...'), root);
         return;
     }
 
-   render(
+    // Extract powerUps from the correct location in the state
+    // Convert the powerUps object to an array
+    const powerUps = state.powerUps ? Object.values(state.powerUps) : [];
+    console.log("PowerUps array for rendering:", powerUps);
+
+    render(
         GameBoard({
-            map: state.map,
+            map: {
+                ...state.map,
+                powerUps: powerUps  // Pass the array here
+            },
             players: state.map.players || [],
             selfId,
             countdown: state.countdown,
-            bombs: state.bombs || []  // ✅ Pass bombs
+            bombs: state.bombs || []
         }),
         root
     );

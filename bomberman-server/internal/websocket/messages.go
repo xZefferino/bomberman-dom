@@ -28,11 +28,12 @@ type ChatMessage struct {
 
 // GameStateUpdate represents the current state of the game
 type GameStateUpdate struct {
-	State       int           `json:"state"`
-	Players     interface{}   `json:"players"`
-	Bombs       interface{}   `json:"bombs"`
-	PowerUps    interface{}   `json:"powerUps"`
-	Countdown   int           `json:"countdown,omitempty"`
-	ElapsedTime int           `json:"elapsedTime,omitempty"`
-	Map         *game.GameMap `json:"map"` 
+	State       int                        `json:"state"`
+	Players     []*game.Player             `json:"players"`
+	Bombs       []*game.Bomb               `json:"bombs"`
+	PowerUps    map[string]game.PowerUp    `json:"powerUps"`
+	Map         *game.GameMap              `json:"map"`
+	Explosions  []game.TimedExplosion      `json:"explosions"` // ✅ add this field
+	Countdown   int                        `json:"countdown,omitempty"`
+	ElapsedTime int                        `json:"elapsedTime,omitempty"`
 }

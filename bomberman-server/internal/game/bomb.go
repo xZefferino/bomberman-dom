@@ -14,10 +14,10 @@ type Bomb struct {
 }
 
 type Explosion struct {
-	Center   Position
-	Range    int
-	Tiles    []Position
-	PlayerID string
+	Center   Position   `json:"center"`
+	Range    int        `json:"range"`
+	Tiles    []Position `json:"tiles"`
+	PlayerID string     `json:"playerId"`
 }
 
 func NewBomb(pos Position, power int, playerID string) *Bomb {

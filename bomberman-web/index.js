@@ -2,12 +2,13 @@ import { renderLobby, updatePlayerCount, appendChatMessage } from './lobby.js';
 import { connectWebSocket, socket, isJoined } from './ws.js';
 import { renderGame } from './game.js';
 import { MOVEMENT } from './stats.js';
+import { updatePlayerStats, toggleStatsBar, removeStatsBar } from './showStats.js';
 
 let activeAnimations = {};
 let localFrames = {};
 let lastPositions = {};
 let lastFrameTime = 0;
-const FRAME_INTERVAL = 35;
+const FRAME_INTERVAL = 100;
 
 const root = document.getElementById('app');
 let currentNickname = '';
@@ -76,8 +77,22 @@ function handleWSMessage(data) {
             }
 
             gameRoot.style.display = 'block';
-
+            
+            // Show stats bar when game starts
+            toggleStatsBar(true);
+            
             startGameLoop();
+        } 
+        
+        // Whether game just started or is in progress, update stats
+        if (data.state && data.state.map && data.state.map.players) {
+            updatePlayerStats(data.state.map.players, currentPlayerID);
+        }
+        
+        if (inGame && data.state && data.state.state === 3) {
+            // Game ended - hide stats
+            inGame = false;
+            removeStatsBar();
         }
     }
 }

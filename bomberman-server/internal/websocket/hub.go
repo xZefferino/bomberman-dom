@@ -116,6 +116,7 @@ func (h *Hub) SendGameState() {
 		Bombs:     h.game.GetBombList(),
 		PowerUps:  h.game.PowerUps,
 		Map:       h.game.Map,
+		Explosions: h.game.Explosions,
 	}
 
 	switch h.game.State {

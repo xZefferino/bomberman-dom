@@ -1,10 +1,10 @@
 import { h, render } from '../framework/index.js';
 import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './bomb.js';
 import { renderPowerUpSprite } from './power.js';
-import { renderPlayerStats } from './stats.js';
+import { renderFlameSprite, FLAME_WIDTH, FLAME_HEIGHT, FLAME_TOTAL_FRAMES, getFlameType } from './flame.js';
+
 
 // Map block types (must match backend)
-const BLOCK_GROUND = 0;        // brick1 (ground)
 const BLOCK_WALL = 1;          // brick3 (indestructible)
 const BLOCK_DESTRUCTIBLE = 2;  // brick2 (destructible)
 const BLOCK_INDESTRUCTIBLE = 3;// brick3 (indestructible, interior)
@@ -105,6 +105,7 @@ function Tile({ type, x, y, player, isSelf }) {
 export function GameBoard({ map, players, selfId, countdown, bombs }) {
     // Try different ways to access powerUps
     const powerUps = map.powerUps || [];
+    const explosions = map.explosions || [];
     
     console.log("PowerUps being rendered:", powerUps);
 
@@ -114,9 +115,6 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
         playerGrid[`${pos.y},${pos.x}`] = { ...p };
     });
 
-    // Find the current player for stats display
-    const currentPlayer = players.find(p => (p.id || p.ID) === selfId);
-    
     return h('div', {
         style: `display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh;`
     }, 
@@ -145,7 +143,7 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
                 const pos = bomb.position || bomb.Position;
                 const frame = Math.floor(Date.now() / 150) % 7;
 
-                const sprite = renderBombSprite({
+                          const sprite = renderBombSprite({
                     imageUrl: './aseets/sprites/bomb.png',
                     frame
                 });
@@ -158,11 +156,43 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
                         top: ${pos.y * TILE_SIZE}px;
                         width: ${BOMB_WIDTH}px;
                         height: ${BOMB_HEIGHT}px;
-                        z-index: 4;
+                        z-index: 5; /* Increased from 4 to be above flames */
                         pointer-events: none;
                     `
                 }, h(sprite.tag, sprite.attrs));
             })),
+
+
+   ...(explosions.flatMap((explosion, idx) => {
+    const frame = explosion.frame || 0; // comes from state
+
+    return explosion.tiles.map((tile, i) => {
+        const type = getFlameType(tile, explosion.center, explosion);
+        const flameSprite = renderFlameSprite({
+            imageUrl: './aseets/sprites/flame.png',
+            type,
+            power: explosion.range,
+            frame
+        });
+
+        return h(flameSprite.tag, {
+            key: `flame-${tile.x}-${tile.y}-${idx}-${i}`,
+            ...flameSprite.attrs,
+            style: `
+                ${flameSprite.attrs.style || ''}
+                position: absolute;
+                left: ${tile.x * TILE_SIZE}px;
+                top: ${tile.y * TILE_SIZE}px;
+                width: ${FLAME_WIDTH}px;
+                height: ${FLAME_HEIGHT}px;
+                z-index: 10;
+                pointer-events: none;
+            `
+        });
+    });
+})),
+
+
 
            ...(powerUps.map((p) => {
                 console.log("Rendering power-up:", p);
@@ -216,10 +246,7 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
                         ${isSelf ? 'filter:drop-shadow(0 0 8px #0f0);' : ''}
                     `
                 });
-            }),
-
-            // Add stats overlay
-            renderPlayerStats(currentPlayer)
+            })
         )
     );
 }
@@ -243,19 +270,24 @@ export function renderGame(root, gameState, selfId) {
     // Convert the powerUps object to an array
     const powerUps = state.powerUps ? Object.values(state.powerUps) : [];
     console.log("PowerUps array for rendering:", powerUps);
+    const flameFrame = Math.floor(Date.now() / 100) % FLAME_TOTAL_FRAMES;
 
-    render(
-        GameBoard({
-            map: {
-                ...state.map,
-                powerUps: powerUps  // Pass the array here
-            },
-            players: state.map.players || [],
-            selfId,
-            countdown: state.countdown,
-            bombs: state.bombs || []
-        }),
-        root
-    );
+render(
+    GameBoard({
+        map: {
+            ...state.map,
+            powerUps: powerUps,
+            explosions: (state.explosions || []).map(explosion => ({
+                ...explosion,
+                frame: flameFrame 
+            }))
+        },
+        players: state.map.players || [],
+        selfId,
+        countdown: state.countdown,
+        bombs: state.bombs || []
+    }),
+    root
+);
 }
 

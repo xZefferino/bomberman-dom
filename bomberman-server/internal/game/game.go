@@ -17,6 +17,11 @@ const (
 	GameFinished
 )
 
+type TimedExplosion struct {
+	*Explosion
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Game struct {
 	ID        string
 	Map       *GameMap
@@ -31,6 +36,7 @@ type Game struct {
 	CountdownTimer   time.Time
 	WaitingTimer     time.Time
 	NextPlayerNumber int // ✅ NEW
+	Explosions []TimedExplosion `json:"explosions"`
 }
 
 // NewGame creates a new game instance
@@ -177,6 +183,16 @@ func (g *Game) Update() {
 
 	g.Map.Players = g.PlayersInSlotOrder()
 	// Now marshal and send the state
+
+	// Use the existing now variable
+	filtered := make([]TimedExplosion, 0, len(g.Explosions))
+
+	for _, exp := range g.Explosions {
+	if now.Sub(exp.CreatedAt) < 500*time.Millisecond {
+		filtered = append(filtered, exp)
+	}
+}
+g.Explosions = filtered
 }
 
 // processBombs handles bomb explosions
@@ -185,9 +201,11 @@ func (g *Game) processBombs() {
 		if time.Since(bomb.PlacedAt) >= bomb.Timer {
 			// Explode the bomb
 			explosion := bomb.Explode(g.Map)
-
-			// Handle explosion effects
 			g.processExplosion(explosion)
+			g.Explosions = append(g.Explosions, TimedExplosion{
+				Explosion: explosion,
+				CreatedAt: time.Now(),
+			})
 
 			// Remove the bomb
 			delete(g.Bombs, bombID)

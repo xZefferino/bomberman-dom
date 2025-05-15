@@ -270,7 +270,7 @@ export function renderGame(root, gameState, selfId) {
     // Convert the powerUps object to an array
     const powerUps = state.powerUps ? Object.values(state.powerUps) : [];
     console.log("PowerUps array for rendering:", powerUps);
-    const flameFrame = Math.floor(Date.now() / 100) % FLAME_TOTAL_FRAMES;
+    const flameFrame = Math.floor(Date.now() / 100) % (FLAME_TOTAL_FRAMES + 1);
 
 render(
     GameBoard({

@@ -8,7 +8,7 @@ let activeAnimations = {};
 let localFrames = {};
 let lastPositions = {};
 let lastFrameTime = 0;
-const FRAME_INTERVAL = 100;
+const FRAME_INTERVAL = 35;
 
 const root = document.getElementById('app');
 let currentNickname = '';

@@ -10,12 +10,16 @@ export function renderPowerUpSprite({ type }) {
         attrs: {
             src: POWER_UP_IMAGES[type] || POWER_UP_IMAGES.flame,
             style: `
-                width: 48px;
-                height: 48px;
-                object-fit: contain;
-                pointer-events: none;
-                user-select: none;
-            `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            object-fit: contain;
+            pointer-events: none;
+            user-select: none;
+        `
         }
     };
 }

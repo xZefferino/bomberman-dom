@@ -1,8 +1,8 @@
 package game
 
 type Position struct {
-    X int `json:"x"`
-    Y int `json:"y"`
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 type Player struct {
@@ -53,12 +53,11 @@ func (p *Player) Move(dx, dy int, gameMap *GameMap) bool {
 		case dy == -1:
 			p.Direction = "up"
 		}
-		
+
 		return true
 	}
 	return false
 }
-
 
 func (p *Player) PlaceBomb(gameMap *GameMap) *Bomb {
 	if p.ActiveBombs >= p.MaxBombs {
@@ -84,7 +83,22 @@ func (p *Player) Hit() bool {
 func (p *Player) ApplyPowerUp(powerUp PowerUp) {
 	switch powerUp.Type {
 	case PowerUpSpeed:
-		p.Speed += 0.2
+		// More meaningful speed increments
+		// First power-up gives +0.3, second +0.4, etc.
+		// This creates a more noticeable but not overwhelming effect
+		if p.Speed < 1.0 {
+			// First speed upgrade
+			p.Speed = 1.0
+		} else if p.Speed < 1.5 {
+			// Second speed upgrade
+			p.Speed = 1.5
+		} else if p.Speed < 2.0 {
+			// Third speed upgrade
+			p.Speed = 2.0
+		} else {
+			// Additional upgrades cap at 2.5
+			p.Speed = 2.5
+		}
 	case PowerUpBomb:
 		p.MaxBombs++
 	case PowerUpFlame:

@@ -1,6 +1,7 @@
 import { renderLobby, updatePlayerCount, appendChatMessage } from './lobby.js';
 import { connectWebSocket, socket, isJoined } from './ws.js';
 import { renderGame } from './game.js';
+import { MOVEMENT } from './stats.js';
 
 let activeAnimations = {};
 let localFrames = {};
@@ -82,6 +83,11 @@ function handleWSMessage(data) {
 }
 
 function startGameLoop() {
+    // Track which keys are currently pressed
+    const keysPressed = {};
+    const keyPressTime = {}; // Track when keys were first pressed
+    let lastMoveTime = 0;
+    
     function loop(timestamp) {
         if (!inGame) return;
 
@@ -90,11 +96,75 @@ function startGameLoop() {
             if (!lastFrameTime) lastFrameTime = timestamp;
             const elapsed = timestamp - lastFrameTime;
 
+            // Find current player to get their speed
+            let currentPlayer = null;
+            let adjustedCooldown = MOVEMENT.BASE_COOLDOWN;
+            
+            if (currentPlayerID && gameState.state && gameState.state.map && gameState.state.map.players) {
+                currentPlayer = gameState.state.map.players.find(p => 
+                    (p.id || p.ID) === currentPlayerID
+                );
+                
+                if (currentPlayer && currentPlayer.speed) {
+                    // Direct mapping from server speed to cooldown
+                    adjustedCooldown = Math.max(
+                        MOVEMENT.MIN_COOLDOWN, 
+                        MOVEMENT.BASE_COOLDOWN / currentPlayer.speed
+                    );
+                }
+            }
+
+            // Handle continuous movement with speed-adjusted cooldown
+            const now = timestamp;
+            if (now - lastMoveTime > adjustedCooldown && isJoined() && currentPlayerID) {
+                let action = null;
+                const keys = ['ArrowUp', 'w', 'ArrowDown', 's', 'ArrowLeft', 'a', 'ArrowRight', 'd'];
+                
+                // Check which keys are currently held AND have been held long enough
+                for (const key of keys) {
+                    if (keysPressed[key] && 
+                        (keyPressTime[key] === -1 || now - keyPressTime[key] > MOVEMENT.HOLD_DELAY)) {
+                        
+                        // Once we've passed the hold delay, mark with -1 so we don't check again
+                        if (keyPressTime[key] !== -1) {
+                            keyPressTime[key] = -1;
+                        }
+                        
+                        if (key === 'ArrowUp' || key === 'w') action = 'move_up';
+                        else if (key === 'ArrowDown' || key === 's') action = 'move_down';
+                        else if (key === 'ArrowLeft' || key === 'a') action = 'move_left';
+                        else if (key === 'ArrowRight' || key === 'd') action = 'move_right';
+                        
+                        if (action) break; // Only one direction at a time
+                    }
+                }
+                
+                if (action) {
+                    // Reset the move timer
+                    lastMoveTime = now;
+                    
+                    // Send movement to server
+                    socket.send(JSON.stringify({
+                        type: 'action',
+                        playerId: currentPlayerID,
+                        payload: { playerId: currentPlayerID, action }
+                    }));
+                }
+            }
+
             const clonedPlayers = gameState.state.map.players.map((p) => {
                 const id = p.id || p.ID;
                 const key = id;
                 const last = lastPositions[key] || {};
                 const moved = !last || last.x !== p.position.x || last.y !== p.position.y;
+
+                // Start animation for ANY player that moved, not just the current player
+                if (moved) {
+                    activeAnimations[key] = activeAnimations[key] || {
+                        frameIndex: 0,
+                        startTime: timestamp
+                    };
+                }
 
                 if (!localFrames[key]) localFrames[key] = 0;
 
@@ -145,33 +215,54 @@ function startGameLoop() {
         requestAnimationFrame(loop);
     }
 
-    // 🔁 TAP-ONLY MOVEMENT
+    // Track keydown and keyup events
     window.onkeydown = (e) => {
-        if (e.repeat || !inGame || !isJoined() || !currentPlayerID) return;
-
+        if (!inGame || !isJoined() || !currentPlayerID) return;
+        
+        // Track this key as pressed with timestamp (only if not already pressed)
+        if (!keysPressed[e.key]) {
+            keysPressed[e.key] = true;
+            keyPressTime[e.key] = performance.now();
+        }
+        
+        // Prevent default for arrow keys to stop page scrolling
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+            e.preventDefault();
+        }
+        
+        // For immediate response on first press (don't wait for hold)
+        if (e.repeat) return;
+        
         let action = null;
         if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
         else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
         else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
         else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
         else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
-
-        // ✅ Trigger full animation cycle for movement keys
-        if (action && action.startsWith('move')) {
-            activeAnimations[currentPlayerID] = {
-                frameIndex: 0,
-                startTime: performance.now()
-            };
-        }
-
+        
+        // Handle immediate movement for better responsiveness
         if (action) {
+            lastMoveTime = performance.now();
+            
+            if (action.startsWith('move')) {
+                activeAnimations[currentPlayerID] = {
+                    frameIndex: 0,
+                    startTime: performance.now()
+                };
+            }
+            
             socket.send(JSON.stringify({
                 type: 'action',
                 playerId: currentPlayerID,
                 payload: { playerId: currentPlayerID, action }
             }));
-            e.preventDefault();
         }
+    };
+    
+    window.onkeyup = (e) => {
+        // Remove this key from pressed keys and reset timing
+        delete keysPressed[e.key];
+        delete keyPressTime[e.key];
     };
 
     loop();

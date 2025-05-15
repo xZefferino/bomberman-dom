@@ -1,8 +1,7 @@
 import { h, render } from '../framework/index.js';
-import { renderCharacterSprite } from './character.js';
 import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './bomb.js';
 import { renderPowerUpSprite } from './power.js';
-
+import { renderPlayerStats } from './stats.js';
 
 // Map block types (must match backend)
 const BLOCK_GROUND = 0;        // brick1 (ground)
@@ -78,6 +77,21 @@ function Tile({ type, x, y, player, isSelf }) {
             `
         })
     );
+
+    // Add to the player sprite where you handle speed power-ups
+    if (player && player.speed && player.speed > 1.0) {
+        layers.push(
+            h('div', {
+                style: `
+                    position: absolute;
+                    left: 0; top: 0;
+                    width: 100%; height: 100%;
+                    background: radial-gradient(circle, transparent 70%, rgba(255,255,0,0.3) 100%);
+                    z-index: 3;
+                `
+            })
+        );
+    }
 }
 
 
@@ -100,6 +114,9 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
         playerGrid[`${pos.y},${pos.x}`] = { ...p };
     });
 
+    // Find the current player for stats display
+    const currentPlayer = players.find(p => (p.id || p.ID) === selfId);
+    
     return h('div', {
         style: `display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh;`
     }, 
@@ -199,7 +216,10 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
                         ${isSelf ? 'filter:drop-shadow(0 0 8px #0f0);' : ''}
                     `
                 });
-            })
+            }),
+
+            // Add stats overlay
+            renderPlayerStats(currentPlayer)
         )
     );
 }

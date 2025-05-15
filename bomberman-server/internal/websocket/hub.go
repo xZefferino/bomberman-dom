@@ -112,8 +112,8 @@ func (h *Hub) SendGameState() {
 	// Create game state update message
 	update := GameStateUpdate{
 		State:     int(h.game.State),
-		Players:   h.game.Players,
-		Bombs:     h.game.GetBombList(), // ✅ FIXED: use array instead of map
+		Players:   h.game.Map.Players, // <-- Use the ordered array!
+		Bombs:     h.game.GetBombList(),
 		PowerUps:  h.game.PowerUps,
 		Map:       h.game.Map,
 	}

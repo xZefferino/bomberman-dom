@@ -28,19 +28,21 @@ type Game struct {
 	Mutex     sync.RWMutex
 
 	// Timers for game flow
-	CountdownTimer time.Time
-	WaitingTimer   time.Time
+	CountdownTimer   time.Time
+	WaitingTimer     time.Time
+	NextPlayerNumber int // ✅ NEW
 }
 
 // NewGame creates a new game instance
 func NewGame() *Game {
 	return &Game{
-		ID:       GenerateUUID(),
-		Map:      NewGameMap(),
-		Players:  make(map[string]*Player),
-		Bombs:    make(map[string]*Bomb),
-		PowerUps: make(map[string]PowerUp),
-		State:    GameWaiting,
+		ID:               GenerateUUID(),
+		Map:              NewGameMap(),
+		Players:          make(map[string]*Player),
+		Bombs:            make(map[string]*Bomb),
+		PowerUps:         make(map[string]PowerUp),
+		State:            GameWaiting,
+		NextPlayerNumber: 1, // ✅ Start from 1
 	}
 }
 
@@ -53,38 +55,42 @@ func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
 		return nil, errors.New("game is full")
 	}
 
-	// Determine starting position based on player count
-	var startX, startY int
-	switch len(g.Players) {
-	case 0: // Top left
-		startX, startY = 2, 2
-	case 1: // Top right
-		startX, startY = MapWidth-3, 2
-	case 2: // Bottom left
-		startX, startY = 2, MapHeight-3
-	case 3: // Bottom right
-		startX, startY = MapWidth-3, MapHeight-3
+	// Fixed slot list, ordered
+	slots := []struct {
+		X, Y int
+	}{
+		{1, 2},    // Player 1
+		{13, 2},   // Player 2
+		{1, 12},   // Player 3
+		{13, 12},  // Player 4
 	}
 
-	player := NewPlayer(id, nickname, startX, startY)
-	player.Number = len(g.Players) + 1 // Assign a fixed number
-	g.Players[id] = player
+	// The number is just len(g.Players) + 1
+	slotIndex := len(g.Players)
+	if slotIndex >= len(slots) {
+		return nil, errors.New("no slot available")
+	}
+	slot := slots[slotIndex]
 
-	// ✅ Start waiting timer once when we reach 2 or more players
+	player := NewPlayer(id, nickname, slot.X, slot.Y)
+	player.Number = slotIndex + 1  // 🔥 ensures Player 1 gets Number 1
+
+	g.Players[id] = player
+	g.Map.PlacePlayer(player, slot.X, slot.Y)
+
+	log.Printf("✅ Assigned %s -> Number: %d | Pos: (%d,%d)", nickname, player.Number, slot.X, slot.Y)
+
 	if len(g.Players) >= 2 && g.WaitingTimer.IsZero() {
-		log.Println("2+ players joined, starting waiting timer...")
 		g.WaitingTimer = time.Now().Add(10 * time.Second)
 	}
-
-	// ✅ If 4 players join, transition immediately
 	if len(g.Players) == 4 {
-		log.Println("Game full with 4 players, starting countdown immediately...")
 		g.State = GameCountdown
 		g.CountdownTimer = time.Now().Add(10 * time.Second)
 	}
 
 	return player, nil
 }
+
 
 // PlaceBomb places a bomb for a player
 func (g *Game) PlaceBomb(playerID string) error {
@@ -169,10 +175,7 @@ func (g *Game) Update() {
 		}
 	}
 
-	g.Map.Players = make([]*Player, 0, len(g.Players))
-	for _, p := range g.Players {
-		g.Map.Players = append(g.Map.Players, p)
-	}
+	g.Map.Players = g.PlayersInSlotOrder()
 	// Now marshal and send the state
 }
 
@@ -260,3 +263,21 @@ func (g *Game) GetBombList() []*Bomb {
 	}
 	return bombList
 }
+
+// PlayersInSlotOrder returns players sorted by their Number (slot)
+func (g *Game) PlayersInSlotOrder() []*Player {
+	ordered := make([]*Player, 0, 4)
+	added := map[int]bool{} // prevent duplicates
+
+	for slot := 1; slot <= 4; slot++ {
+		for _, p := range g.Players {
+			if p.Number == slot && !added[p.Number] {
+				ordered = append(ordered, p)
+				added[p.Number] = true
+				break
+			}
+		}
+	}
+	return ordered
+}
+

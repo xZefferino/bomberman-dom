@@ -116,11 +116,8 @@ func (c *Client) handleMessage(message Message) {
 		log.Printf("Registering player: %s (%s)", c.Nickname, c.ID)
 
 		// Always attempt AddPlayer, but still send join_ack even if it fails
-		_, err := c.Hub.game.AddPlayer(c.ID, c.Nickname)
-		if err != nil {
-			log.Printf("AddPlayer error: %v", err)
-			// Still continue — this may be a reconnect or game full, but we want chat to work
-		}
+		log.Printf("Join message acknowledged for %s (%s)", c.Nickname, c.ID)
+		
 
 		ack := Message{
 			Type: "join_ack",

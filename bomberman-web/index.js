@@ -97,23 +97,27 @@ function startGameLoop() {
                 const moved = !last || last.x !== p.position.x || last.y !== p.position.y;
 
                 if (!localFrames[key]) localFrames[key] = 0;
-               if (activeAnimations[key]) {
-                const anim = activeAnimations[key];
-                const timeSinceStart = timestamp - anim.startTime;
 
-                const frame = Math.floor(timeSinceStart / FRAME_INTERVAL);
+                if (activeAnimations[key]) {
+                    const anim = activeAnimations[key];
+                    const timeSinceStart = timestamp - anim.startTime;
+                    const frame = Math.floor(timeSinceStart / FRAME_INTERVAL);
 
-                if (frame < 9) {
-                    localFrames[key] = frame;
-                } else {
-                    localFrames[key] = 0;
-                    delete activeAnimations[key];
+                    if (frame < 9) {
+                        localFrames[key] = frame;
+                    } else {
+                        localFrames[key] = 0;
+                        delete activeAnimations[key];
+                    }
                 }
-            }
 
                 lastPositions[key] = { x: p.position.x, y: p.position.y };
 
-                return { ...p, frame: localFrames[key] };
+                return {
+                    ...p,
+                    frame: localFrames[key],
+                    number: p.number || p.Number || 1  // ✅ PRESERVE number!
+                };
             });
 
             if (elapsed > FRAME_INTERVAL) {
@@ -131,6 +135,10 @@ function startGameLoop() {
                 }
             };
 
+        console.log("🧩 DEBUG Player Sprites:");
+        clonedPlayers.forEach(p => {
+        console.log(`Player ${p.nickname || p.id} => Number: ${p.number} | Sprite: character${p.number}.png | Pos: (${p.position.x}, ${p.position.y})`);
+        });
             renderGame(gameRoot, localState, currentPlayerID);
         }
 
@@ -138,37 +146,37 @@ function startGameLoop() {
     }
 
     // 🔁 TAP-ONLY MOVEMENT
-        window.onkeydown = (e) => {
-            if (e.repeat || !inGame || !isJoined() || !currentPlayerID) return;
+    window.onkeydown = (e) => {
+        if (e.repeat || !inGame || !isJoined() || !currentPlayerID) return;
 
-            let action = null;
-            if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
-            else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
-            else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
-            else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
-            else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
+        let action = null;
+        if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
+        else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
+        else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
+        else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
+        else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
 
-            // ✅ Trigger full animation cycle for movement keys
-            if (action && action.startsWith('move')) {
-                activeAnimations[currentPlayerID] = {
-                    frameIndex: 0,
-                    startTime: performance.now()
-                };
-            }
+        // ✅ Trigger full animation cycle for movement keys
+        if (action && action.startsWith('move')) {
+            activeAnimations[currentPlayerID] = {
+                frameIndex: 0,
+                startTime: performance.now()
+            };
+        }
 
-            if (action) {
-                socket.send(JSON.stringify({
-                    type: 'action',
-                    playerId: currentPlayerID,
-                    payload: { playerId: currentPlayerID, action }
-                }));
-                e.preventDefault();
-            }
-        };
-
+        if (action) {
+            socket.send(JSON.stringify({
+                type: 'action',
+                playerId: currentPlayerID,
+                payload: { playerId: currentPlayerID, action }
+            }));
+            e.preventDefault();
+        }
+    };
 
     loop();
 }
+
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startLobby);

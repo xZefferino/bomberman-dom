@@ -1,6 +1,6 @@
 import { h, render } from '../framework/index.js';
 import { renderCharacterSprite } from './character.js';
-import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './resources.js';
+import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './bomb.js';
 
 
 // Map block types (must match backend)
@@ -111,9 +111,11 @@ export function GameBoard({ map, players, selfId, countdown, bombs }) {
             // 🔲 Render map tiles
             map.blocks.map((row, y) =>
                 h('div', { style: 'display: flex;' },
-                    row.map((type, x) =>
-                        Tile({ type, x, y }) // no player logic here anymore
-                    )
+                    row.map((type, x) => {
+                        const player = playerGrid[`${y},${x}`];
+                        const isSelf = player && (player.ID === selfId || player.id === selfId);
+                        return Tile({ type, x, y, player, isSelf });
+                    })
                 )
             ),
             ...(bombs.map((bomb) => {

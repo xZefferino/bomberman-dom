@@ -1,5 +1,7 @@
 import { h, render } from '../framework/index.js';
 import { renderCharacterSprite } from './character.js';
+import { renderBombSprite, BOMB_WIDTH, BOMB_HEIGHT } from './resources.js';
+
 
 // Map block types (must match backend)
 const BLOCK_GROUND = 0;        // brick1 (ground)
@@ -85,21 +87,18 @@ function Tile({ type, x, y, player, isSelf }) {
 }
 
 // Render the whole board
-export function GameBoard({ map, players, selfId, countdown }) {
-    // Build a 2D array of player positions for quick lookup
+export function GameBoard({ map, players, selfId, countdown, bombs }) {
     const playerGrid = {};
     players.forEach((p) => {
         const pos = p.position || p.Position;
-        playerGrid[`${pos.y},${pos.x}`] = { ...p }; // Use backend's player.number
+        playerGrid[`${pos.y},${pos.x}`] = { ...p };
     });
 
-    console.log("Player grid:", playerGrid);
-
     return h('div', {
-    style: `display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh;`
+        style: `display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh;`
     }, 
         h('div', {
-            style: `display:inline-block;background:#222;line-height:0;position:relative;`
+            style: `display:inline-block; background:#222; line-height:0; position:relative;`
         },
             ...(countdown > 0 ? [
                 h('div', {
@@ -109,22 +108,70 @@ export function GameBoard({ map, players, selfId, countdown }) {
                 }, `Game starts in ${countdown}`)
             ] : []),
 
+            // 🔲 Render map tiles
             map.blocks.map((row, y) =>
                 h('div', { style: 'display: flex;' },
                     row.map((type, x) =>
-                        Tile({
-                            type,
-                            x,
-                            y,
-                            player: playerGrid[`${y},${x}`],
-                            isSelf: playerGrid[`${y},${x}`] && playerGrid[`${y},${x}`].ID === selfId
-                        })
+                        Tile({ type, x, y }) // no player logic here anymore
                     )
                 )
-            )
+            ),
+            ...(bombs.map((bomb) => {
+                const pos = bomb.position || bomb.Position;
+                const frame = Math.floor(Date.now() / 150) % 7;
+
+                const sprite = renderBombSprite({
+                    imageUrl: './aseets/sprites/bomb.png',
+                    frame
+                });
+
+                return h('div', {
+                    key: bomb.ID || `bomb-${pos.x}-${pos.y}`,
+                    style: `
+                        position: absolute;
+                        left: ${pos.x * TILE_SIZE}px;
+                        top: ${pos.y * TILE_SIZE}px;
+                        width: ${BOMB_WIDTH}px;
+                        height: ${BOMB_HEIGHT}px;
+                        z-index: 4;
+                        pointer-events: none;
+                    `
+                }, h(sprite.tag, sprite.attrs));
+            })),
+
+            // 🧍 Render players absolutely on top
+            ...players.map((p) => {
+                const pos = p.position || p.Position;
+                const number = p.number || p.Number || 1;
+                const isSelf = p.ID === selfId;
+
+                const rowMap = { up: 0, left: 1, down: 2, right: 3 };
+                const row = rowMap[p.direction || 'down'];
+                const frame = p.frame || 0;
+                const frameWidth = 64;
+                const frameHeight = 96;
+
+                return h('div', {
+                    key: p.ID,
+                    style: `
+                        position: absolute;
+                        left: ${pos.x * TILE_SIZE - 8}px;
+                        top: ${pos.y * TILE_SIZE - 48}px;
+                        width: ${frameWidth}px;
+                        height: ${frameHeight}px;
+                        background: url(${SPRITES.players[number - 1]}) no-repeat;
+                        background-position: -${frame * frameWidth}px -${row * frameHeight}px;
+                        background-size: ${frameWidth * SPRITE_FRAMES}px ${frameHeight * 4}px;
+                        z-index: 5;
+                        transition: left 0.2s linear, top 0.2s linear;
+                        ${isSelf ? 'filter:drop-shadow(0 0 8px #0f0);' : ''}
+                    `
+                });
+            })
         )
     );
 }
+
 
 // Example usage (replace with real state/game data)
 export function renderGame(root, gameState, selfId) {
@@ -137,12 +184,13 @@ export function renderGame(root, gameState, selfId) {
         return;
     }
 
-    render(
+   render(
         GameBoard({
             map: state.map,
-            players: state.map.players || [], // <--- use map.players
+            players: state.map.players || [],
             selfId,
-            countdown: state.countdown
+            countdown: state.countdown,
+            bombs: state.bombs || []  // ✅ Pass bombs
         }),
         root
     );

@@ -249,3 +249,14 @@ func (g *Game) GetPlayerNumber(playerID string) int {
 	}
 	return 0
 }
+
+func (g *Game) GetBombList() []*Bomb {
+	g.Mutex.RLock()
+	defer g.Mutex.RUnlock()
+
+	bombList := make([]*Bomb, 0, len(g.Bombs))
+	for _, bomb := range g.Bombs {
+		bombList = append(bombList, bomb)
+	}
+	return bombList
+}

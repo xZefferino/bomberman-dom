@@ -110,20 +110,20 @@ func (h *Hub) broadcastMessage(message []byte) {
 // SendGameState sends the current game state to all connected clients
 func (h *Hub) SendGameState() {
 	// Create game state update message
-			update := GameStateUpdate{
-			State:     int(h.game.State),
-			Players:   h.game.Players,
-			Bombs:     h.game.Bombs,
-			PowerUps:  h.game.PowerUps,
-			Map:       h.game.Map, // ✅ This must not be nil
-		}
+	update := GameStateUpdate{
+		State:     int(h.game.State),
+		Players:   h.game.Players,
+		Bombs:     h.game.GetBombList(), // ✅ FIXED: use array instead of map
+		PowerUps:  h.game.PowerUps,
+		Map:       h.game.Map,
+	}
 
-		switch h.game.State {
-		case game.GameCountdown:
-			update.Countdown = int(time.Until(h.game.CountdownTimer).Seconds())
-		case game.GameRunning:
-			update.ElapsedTime = int(time.Since(h.game.StartTime).Seconds())
-		}
+	switch h.game.State {
+	case game.GameCountdown:
+		update.Countdown = int(time.Until(h.game.CountdownTimer).Seconds())
+	case game.GameRunning:
+		update.ElapsedTime = int(time.Since(h.game.StartTime).Seconds())
+	}
 
 	// Convert to JSON
 	message, err := json.Marshal(map[string]interface{}{
@@ -137,9 +137,8 @@ func (h *Hub) SendGameState() {
 	}
 
 	h.broadcastMessage(message)
-	// log.Printf("Sending GameState. Map nil? %v", h.game.Map == nil)
-
 }
+
 
 // Add this helper to get player number by ID
 func (h *Hub) GetPlayerNumber(playerID string) int {

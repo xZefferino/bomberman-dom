@@ -36,11 +36,11 @@ func (b *Bomb) Explode(gameMap *GameMap) *Explosion {
 		Center:   b.Position,
 		Range:    b.Power,
 		PlayerID: b.PlayerID,
-		Tiles:    make([]Position, 0),
+		Tiles:    []Position{b.Position}, // include center of explosion
 	}
 
-	// Check explosion in all four directions
 	directions := []Position{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
+
 	for _, dir := range directions {
 		for i := 1; i <= b.Power; i++ {
 			pos := Position{
@@ -52,10 +52,17 @@ func (b *Bomb) Explode(gameMap *GameMap) *Explosion {
 				break
 			}
 
+			block := gameMap.Blocks[pos.Y][pos.X]
+
+			// Stop if indestructible
+			if block == Indestructible {
+				break
+			}
+
 			explosion.Tiles = append(explosion.Tiles, pos)
 
-			// Stop if hit a wall
-			if gameMap.IsWall(pos) {
+			// Stop if destructible — it will be destroyed, but don't go beyond it
+			if block == Destructible {
 				break
 			}
 		}
@@ -63,3 +70,4 @@ func (b *Bomb) Explode(gameMap *GameMap) *Explosion {
 
 	return explosion
 }
+

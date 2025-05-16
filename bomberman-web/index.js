@@ -1,10 +1,9 @@
-import { renderLobby, updatePlayerCount, appendChatMessage } from './lobby.js';
+import { renderLobby, updatePlayerCount, appendChatMessage } from './components/Lobby.js';
+import { updatePlayerStats } from './components/PlayerStats.js';
+import { showDeathMessage, handleGameEnd } from './components/Overlays.js';
 import { connectWebSocket, socket, isJoined } from './ws.js';
 import { renderGame } from './game.js';
 import { MOVEMENT } from './stats.js';
-import { updatePlayerStats, toggleStatsBar, removeStatsBar } from './showStats.js';
-// Add this import for death handling
-import { handlePlayerDeath, deadPlayers, isPlayerDying, isDeathComplete } from './death.js';
 
 // Add a gameState variable to track if a game is in progress
 let gameInProgress = false;
@@ -28,6 +27,17 @@ let playerWasAlive = true;
 let keysPressed = {};
 let keyPressTime = {}; // Track when keys were first pressed
 let lastMoveTime = 0;
+
+let movementInterval = null;
+let lastMoveDirection = null;
+let lastMoveSent = 0;
+const MOVE_REPEAT_INTERVAL = 60; // ms, lower = smoother
+const MOVE_DEBOUNCE = 80; // ms, minimum time between move actions
+const BOMB_DEBOUNCE = 200; // ms, minimum time between bomb drops
+let lastBombTime = 0;
+
+let localPlayerFrame = 0;
+let localPlayerLastMove = 0;
 
 async function joinGame(nickname) {
     const res = await fetch('http://localhost:8080/api/game/join', {
@@ -62,6 +72,9 @@ function connectPlayer(nickname) {
 
 function startLobby() {
     inGame = false;
+    stopGameLoop();
+    window.removeEventListener('keydown', onKeyDown, false);
+    window.removeEventListener('keyup', onKeyUp, false);
     renderLobby(root, {
         onJoin: connectPlayer,
         onSendChat: (msg) => {
@@ -139,14 +152,6 @@ function handlePlayAgain() {
         gameState = null;
         inGame = false;
         
-        // Reset death animations
-        Object.keys(deadPlayers).forEach(key => {
-            deadPlayers[key].done = true;
-        });
-        
-        // Clear any leftover UI elements
-        document.querySelectorAll('.game-over-overlay').forEach(el => el.remove());
-        
         // Return to lobby
         console.log("Returning to lobby");
         startLobby();
@@ -175,64 +180,6 @@ function handleWSMessage(data) {
             handleGameStateUpdate(data);
         }
     }
-}
-
-// Add this function to handle game ending
-function handleGameEnd(winner) {
-    // Show game over message with winner
-    const gameOverMessage = document.createElement('div');
-    gameOverMessage.innerHTML = winner ? 
-        `<h2>GAME OVER!</h2><h3>${winner.nickname || 'Player ' + winner.number} WINS!</h3>` :
-        '<h2>GAME OVER!</h2><h3>No winners this time!</h3>';
-        
-    gameOverMessage.style = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background-color: rgba(0, 0, 0, 0.8);
-        color: #fff;
-        padding: 30px 60px;
-        border-radius: 10px;
-        font-size: 24px;
-        text-align: center;
-        z-index: 1000;
-        box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
-    `;
-    
-    // Add a restart button
-    const restartButton = document.createElement('button');
-    restartButton.innerText = 'Back to Lobby';
-    restartButton.style = `
-        background-color: #e74c3c;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        margin-top: 20px;
-        font-size: 18px;
-        cursor: pointer;
-        border-radius: 5px;
-        transition: background-color 0.3s;
-    `;
-    
-    restartButton.addEventListener('mouseover', () => {
-        restartButton.style.backgroundColor = '#c0392b';
-    });
-    
-    restartButton.addEventListener('mouseout', () => {
-        restartButton.style.backgroundColor = '#e74c3c';
-    });
-    
-    restartButton.addEventListener('click', () => {
-        // Remove game over message
-        document.body.removeChild(gameOverMessage);
-        
-        // Return to lobby
-        window.location.reload(); // Simplest way to restart
-    });
-    
-    gameOverMessage.appendChild(restartButton);
-    document.body.appendChild(gameOverMessage);
 }
 
 // Update the game state handling function
@@ -288,15 +235,6 @@ function handleGameStateUpdate(newState) {
         console.log("Player has died!");
         // Show death message to the player
         showDeathMessage();
-        
-        // Ensure death animation is started
-        if (playerState) {
-            handlePlayerDeath(
-                currentPlayerID, 
-                playerState.number || playerState.Number || 1,
-                playerState.position || playerState.Position
-            );
-        }
     }
     
     playerWasAlive = isPlayerAlive;
@@ -308,7 +246,7 @@ function handleGameStateUpdate(newState) {
         
         const gameRoot = document.getElementById('game-root');
         if (gameRoot) {
-            renderGame(gameRoot, gameState, currentPlayerID, handlePlayAgain);
+            renderGameWithLocalFrame(gameRoot, gameState, currentPlayerID, handlePlayAgain);
         }
     }
 }
@@ -348,185 +286,61 @@ function initializeGame() {
         updatePlayerStats(gameState.state.map.players, currentPlayerID);
     }
     
+    // Add keyboard event listeners for gameplay
+    window.addEventListener('keydown', onKeyDown, false);
+    window.addEventListener('keyup', onKeyUp, false);
+    
     // Start the game loop for animations and controls
     startGameLoop();
     
     console.log("Game interface initialized");
 }
 
-function showDeathMessage() {
-    // Create a death message overlay that fades out
-    const deathMessage = document.createElement('div');
-    deathMessage.innerHTML = 'YOU DIED!';
-    deathMessage.style = `
-        position: fixed;
-        top: 30%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: red;
-        font-size: 48px;
-        font-weight: bold;
-        z-index: 1000;
-        text-shadow: 2px 2px 8px #000;
-        animation: fadeOut 3s forwards;
-        pointer-events: none;
-    `;
-    
-    // Add fadeOut animation if it doesn't exist
-    if (!document.querySelector('#death-animation-style')) {
-        const style = document.createElement('style');
-        style.id = 'death-animation-style';
-        style.textContent = `
-            @keyframes fadeOut {
-                0% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
-                70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-                100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-    
-    document.body.appendChild(deathMessage);
-    
-    // Remove the message after animation completes
-    setTimeout(() => {
-        if (deathMessage.parentNode) {
-            deathMessage.parentNode.removeChild(deathMessage);
-        }
-    }, 3000);
+function startGameLoop() {
+    if (movementInterval) clearInterval(movementInterval);
+    movementInterval = setInterval(handleHeldMovement, MOVE_REPEAT_INTERVAL);
 }
 
-function startGameLoop() {
-    function loop(timestamp) {
-        if (!inGame) return;
+function stopGameLoop() {
+    if (movementInterval) clearInterval(movementInterval);
+    movementInterval = null;
+}
 
-        const gameRoot = document.getElementById('game-root');
-        if (gameState && gameRoot) {
-            if (!lastFrameTime) lastFrameTime = timestamp;
-            const elapsed = timestamp - lastFrameTime;
-
-            // Find current player to get their speed
-            let currentPlayer = null;
-            let adjustedCooldown = MOVEMENT.BASE_COOLDOWN;
-            
-            if (currentPlayerID && gameState.state && gameState.state.map && gameState.state.map.players) {
-                currentPlayer = gameState.state.map.players.find(p => 
-                    (p.id || p.ID) === currentPlayerID
-                );
-                
-                if (currentPlayer && currentPlayer.speed) {
-                    // Direct mapping from server speed to cooldown
-                    adjustedCooldown = Math.max(
-                        MOVEMENT.MIN_COOLDOWN, 
-                        MOVEMENT.BASE_COOLDOWN / currentPlayer.speed
-                    );
-                }
-            }
-
-            // Handle continuous movement with speed-adjusted cooldown
-            const now = timestamp;
-            if (now - lastMoveTime > adjustedCooldown && isJoined() && currentPlayerID) {
-                let action = null;
-                const keys = ['ArrowUp', 'w', 'ArrowDown', 's', 'ArrowLeft', 'a', 'ArrowRight', 'd'];
-                
-                // Check which keys are currently held AND have been held long enough
-                for (const key of keys) {
-                    if (keysPressed[key] && 
-                        (keyPressTime[key] === -1 || now - keyPressTime[key] > MOVEMENT.HOLD_DELAY)) {
-                        
-                        // Once we've passed the hold delay, mark with -1 so we don't check again
-                        if (keyPressTime[key] !== -1) {
-                            keyPressTime[key] = -1;
-                        }
-                        
-                        if (key === 'ArrowUp' || key === 'w') action = 'move_up';
-                        else if (key === 'ArrowDown' || key === 's') action = 'move_down';
-                        else if (key === 'ArrowLeft' || key === 'a') action = 'move_left';
-                        else if (key === 'ArrowRight' || key === 'd') action = 'move_right';
-                        
-                        if (action) break; // Only one direction at a time
-                    }
-                }
-                
-                if (action) {
-                    // Reset the move timer
-                    lastMoveTime = now;
-                    
-                    // Send movement to server
-                    sendAction(action);
-                }
-            }
-
-            const clonedPlayers = gameState.state.map.players.map((p) => {
-                const id = p.id || p.ID;
-                const key = id;
-                const last = lastPositions[key] || {};
-                const moved = !last || last.x !== p.position.x || last.y !== p.position.y;
-
-                // Start animation for ANY player that moved, not just the current player
-                if (moved) {
-                    activeAnimations[key] = activeAnimations[key] || {
-                        frameIndex: 0,
-                        startTime: timestamp
-                    };
-                }
-
-                if (!localFrames[key]) localFrames[key] = 0;
-
-                if (activeAnimations[key]) {
-                    const anim = activeAnimations[key];
-                    const timeSinceStart = timestamp - anim.startTime;
-                    const frame = Math.floor(timeSinceStart / FRAME_INTERVAL);
-
-                    if (frame < 9) {
-                        localFrames[key] = frame;
-                    } else {
-                        localFrames[key] = 0;
-                        delete activeAnimations[key];
-                    }
-                }
-
-                lastPositions[key] = { x: p.position.x, y: p.position.y };
-
-                return {
-                    ...p,
-                    frame: localFrames[key],
-                    number: p.number || p.Number || 1  // ✅ PRESERVE number!
-                };
-            });
-
-            if (elapsed > FRAME_INTERVAL) {
-                lastFrameTime = timestamp;
-            }
-
-            const localState = {
-                ...gameState,
-                state: {
-                    ...gameState.state,
-                    map: {
-                        ...gameState.state.map,
-                        players: clonedPlayers
-                    }
-                }
-            };
-
-            // Define a proper play again handler that will be passed to renderGame
-            const playAgainHandler = () => {
-                console.log("Play Again handler called from game loop");
-                handlePlayAgain();
-            };
-
-            renderGame(gameRoot, localState, currentPlayerID, playAgainHandler);
+function handleHeldMovement() {
+    if (!inGame || !isJoined() || !currentPlayerID) return;
+    const now = performance.now();
+    let moveAction = null;
+    if (keysPressed['ArrowUp'] || keysPressed['w']) moveAction = 'move_up';
+    else if (keysPressed['ArrowDown'] || keysPressed['s']) moveAction = 'move_down';
+    else if (keysPressed['ArrowLeft'] || keysPressed['a']) moveAction = 'move_left';
+    else if (keysPressed['ArrowRight'] || keysPressed['d']) moveAction = 'move_right';
+    if (moveAction) {
+        // Animate local player frame for smoothness
+        if (now - localPlayerLastMove > 80) { // 80ms per frame
+            localPlayerFrame = (localPlayerFrame + 1) % 9;
+            localPlayerLastMove = now;
         }
-
-        requestAnimationFrame(loop);
+        if (lastMoveDirection !== moveAction || now - lastMoveSent > MOVE_DEBOUNCE) {
+            sendAction(moveAction);
+            lastMoveDirection = moveAction;
+            lastMoveSent = now;
+        }
+    } else {
+        lastMoveDirection = null;
+        localPlayerFrame = 0; // Reset to standing frame
     }
+}
 
-    // Track keydown and keyup events
-    window.onkeydown = (e) => handleKeyInput(e, true);
-    window.onkeyup = (e) => handleKeyInput(e, false);
+function renderGameWithLocalFrame(root, gameState, selfId, onPlayAgain) {
+    renderGame(root, gameState, selfId, onPlayAgain, localPlayerFrame);
+}
 
-    loop();
+function onKeyDown(e) {
+    handleKeyInput(e, true);
+}
+
+function onKeyUp(e) {
+    handleKeyInput(e, false);
 }
 
 function handleKeyInput(e, isDown) {
@@ -543,43 +357,29 @@ function handleKeyInput(e, isDown) {
     
     if (!inGame || !isJoined() || !currentPlayerID) return;
     
-    // Track this key as pressed with timestamp (only if not already pressed)
-    if (isDown && !keysPressed[e.key]) {
+    // Track this key as pressed
+    if (isDown) {
         keysPressed[e.key] = true;
         keyPressTime[e.key] = performance.now();
-    } else if (!isDown) {
-        // Remove this key from pressed keys and reset timing
+        // Bomb placement (space or enter)
+        if ((e.key === ' ' || e.key === 'Enter') && isDown) {
+            const now = performance.now();
+            if (now - lastBombTime > BOMB_DEBOUNCE) {
+                sendAction('place_bomb');
+                lastBombTime = now;
+            }
+        }
+    } else {
         delete keysPressed[e.key];
         delete keyPressTime[e.key];
     }
     
-    // Prevent default for arrow keys to stop page scrolling
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+    // Prevent default for movement/bomb keys
+    if ([
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'w', 'a', 's', 'd', ' ', 'Enter'
+    ].includes(e.key)) {
         e.preventDefault();
-    }
-    
-    // For immediate response on first press (don't wait for hold)
-    if (isDown && !e.repeat) {
-        let action = null;
-        if (e.key === 'ArrowUp' || e.key === 'w') action = 'move_up';
-        else if (e.key === 'ArrowDown' || e.key === 's') action = 'move_down';
-        else if (e.key === 'ArrowLeft' || e.key === 'a') action = 'move_left';
-        else if (e.key === 'ArrowRight' || e.key === 'd') action = 'move_right';
-        else if (e.key === ' ' || e.key === 'Enter') action = 'place_bomb';
-        
-        // Handle immediate movement for better responsiveness
-        if (action) {
-            lastMoveTime = performance.now();
-            
-            if (action.startsWith('move')) {
-                activeAnimations[currentPlayerID] = {
-                    frameIndex: 0,
-                    startTime: performance.now()
-                };
-            }
-            
-            sendAction(action);
-        }
     }
 }
 

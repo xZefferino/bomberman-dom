@@ -1,6 +1,7 @@
 export const DEATH_WIDTH = 64;
 export const DEATH_HEIGHT = 96;
-export const DEATH_TOTAL_FRAMES = 8;
+// Update to match your sprite sheet's 5 frames
+export const DEATH_TOTAL_FRAMES = 5;
 export const DEATH_FRAME_DURATION = 150; // ms per frame
 
 const deathStyle = document.createElement('style');
@@ -13,23 +14,17 @@ deathStyle.textContent = `
 `;
 document.head.appendChild(deathStyle);
 
-/**
- * Render a player death animation
- * @param {Object} options - Configuration options
- * @param {string} options.imageUrl - URL to death sprite image
- * @param {number} options.playerNumber - Player number (1-4) for coloring
- * @param {number} options.frame - Current animation frame
- * @returns {Object} The rendered death sprite object
- */
 export function renderDeathSprite({ imageUrl, playerNumber = 1, frame = 0 }) {
     const frameIndex = Math.min(frame, DEATH_TOTAL_FRAMES - 1);
     
-    // Calculate the position in the sprite sheet
+    // Calculate the position in the sprite sheet - for horizontal frames only
     const backgroundX = -frameIndex * DEATH_WIDTH;
-    const backgroundY = -(playerNumber - 1) * DEATH_HEIGHT;
+    // Since your sprite doesn't have different player colors, we can remove the vertical offset
+    // const backgroundY = -(playerNumber - 1) * DEATH_HEIGHT;
+    const backgroundY = 0;
     
     const sheetWidth = DEATH_WIDTH * DEATH_TOTAL_FRAMES;
-    const sheetHeight = DEATH_HEIGHT * 4; // 4 players
+    const sheetHeight = DEATH_HEIGHT; // Single row for all players
     
     const isLastFrame = frameIndex === DEATH_TOTAL_FRAMES - 1;
     
@@ -51,74 +46,90 @@ export function renderDeathSprite({ imageUrl, playerNumber = 1, frame = 0 }) {
     };
 }
 
-/**
- * Track player death states
- * @type {Object<string, {startTime: number, frame: number, done: boolean}>}
- */
+
 export const deadPlayers = {};
 
-/**
- * Handle player death
- * @param {string} playerId - Player ID
- * @param {number} playerNumber - Player sprite number (1-4)
- * @param {Object} position - Player position {x, y}
- * @returns {boolean} - Whether the death animation is complete
- */
+// Add this function to help with debugging death events
+export function debugDeathState() {
+    console.log("Current death states:", deadPlayers);
+    return Object.keys(deadPlayers).length;
+}
+
+// Make the death animation more resilient
 export function handlePlayerDeath(playerId, playerNumber, position) {
     const now = Date.now();
     
+    // Make sure position is valid to prevent rendering errors
+    if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') {
+        console.error(`Invalid position for player ${playerId}:`, position);
+        return false;
+    }
+    
     if (!deadPlayers[playerId]) {
-        // Initialize death state for this player
+        // Initialize death state for this player with explicit logging
+        console.log(`🔴 DEATH: Player ${playerId} starting death animation at position:`, position);
         deadPlayers[playerId] = {
             startTime: now,
             frame: 0,
             done: false,
-            position: { ...position },
+            position: { x: position.x, y: position.y },
             playerNumber
         };
+        
+        // Add a cleanup timeout to ensure the death state gets cleaned up
+        // even if something goes wrong with the animation
+        setTimeout(() => {
+            if (deadPlayers[playerId] && !deadPlayers[playerId].done) {
+                console.log("Force completing death animation for player", playerId);
+                deadPlayers[playerId].done = true;
+            }
+        }, (DEATH_TOTAL_FRAMES * DEATH_FRAME_DURATION) + 2000); // Safety timeout
+        
         return false;
     }
     
     const deathState = deadPlayers[playerId];
     
+    // If the animation is already complete, don't update it
+    if (deathState.done) {
+        return true;
+    }
+    
     // Calculate current frame based on time elapsed
     const elapsed = now - deathState.startTime;
     const currentFrame = Math.floor(elapsed / DEATH_FRAME_DURATION);
     
-    // Update the frame
-    deathState.frame = currentFrame;
+    // Update the frame with limits
+    deathState.frame = Math.min(currentFrame, DEATH_TOTAL_FRAMES - 1);
+    
+    // Debug log for frame changes
+    if (deathState._lastFrame !== deathState.frame) {
+        console.log(`🔄 DEATH: Player ${playerId} death animation frame: ${deathState.frame}`);
+        deathState._lastFrame = deathState.frame;
+    }
     
     // Check if animation is complete
     if (currentFrame >= DEATH_TOTAL_FRAMES) {
-        deathState.done = true;
-        return true;
+        // Wait additional time for fade out animation
+        if (elapsed >= DEATH_FRAME_DURATION * DEATH_TOTAL_FRAMES + 600) {
+            deathState.done = true;
+            console.log(`✅ DEATH: Player ${playerId} death animation complete`);
+            return true;
+        }
     }
     
     return false;
 }
 
-/**
- * Check if a player is currently dying (showing death animation)
- * @param {string} playerId - Player ID
- * @returns {boolean} - Whether player is in death animation
- */
 export function isPlayerDying(playerId) {
     return !!deadPlayers[playerId] && !deadPlayers[playerId].done;
 }
 
-/**
- * Check if a player's death animation is complete
- * @param {string} playerId - Player ID
- * @returns {boolean} - Whether death animation is complete
- */
+
 export function isDeathComplete(playerId) {
     return !!deadPlayers[playerId] && deadPlayers[playerId].done;
 }
 
-/**
- * Remove a player from the death tracking system
- * @param {string} playerId - Player ID
- */
 export function removeDeadPlayer(playerId) {
     delete deadPlayers[playerId];
 }

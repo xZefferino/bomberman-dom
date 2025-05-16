@@ -130,23 +130,58 @@ function PlayerCard(player, isCurrentPlayer = false) {
 
 // Main function to update player stats
 export function updatePlayerStats(players, currentPlayerId) {
-    const container = ensureStatsContainer();
-    
-    if (!players || players.length === 0) {
-        container.style.display = 'none';
-        return;
+    // Ensure players is an array
+    if (!Array.isArray(players)) {
+        console.warn("updatePlayerStats received non-array players:", players);
+        players = [];
+    }
+
+    try {
+        const statsContainer = ensureStatsContainer();
+        
+        // Clear existing player cards first
+        statsContainer.innerHTML = '';
+        
+        // Sort players by their number for consistent display
+        const sortedPlayers = [...players].sort((a, b) => 
+            (a.number || a.Number || 1) - (b.number || b.Number || 1)
+        );
+        
+        // Create player cards
+        sortedPlayers.forEach(player => {
+            try {
+                const isCurrentPlayer = player.id === currentPlayerId || player.ID === currentPlayerId;
+                const cardElement = renderPlayerCard(player, isCurrentPlayer);
+                if (cardElement && cardElement instanceof Element) {
+                    statsContainer.appendChild(cardElement);
+                } else {
+                    console.warn("Invalid card element returned:", cardElement);
+                }
+            } catch (err) {
+                console.error("Error rendering player card:", err);
+            }
+        });
+    } catch (err) {
+        console.error("Error in updatePlayerStats:", err);
+    }
+}
+
+// Helper function to render player card safely
+function renderPlayerCard(player, isCurrentPlayer) {
+    // In case player is not properly defined
+    if (!player) {
+        console.warn("Received undefined player");
+        return document.createElement('div'); // Return empty div
     }
     
-    container.style.display = 'flex';
+    const cardElement = document.createElement('div');
+    // The issue is here - PlayerCard returns a virtual DOM node, not a real DOM element
+    const playerCard = PlayerCard(player, isCurrentPlayer);
     
-    const statsElements = players.map(player => {
-        const isCurrentPlayer = (player.id === currentPlayerId || player.ID === currentPlayerId);
-        return PlayerCard(player, isCurrentPlayer);
-    });
+    // Use the render function to convert virtual DOM to real DOM
+    render(playerCard, cardElement);
     
-    render(h('div', { 
-        style: 'display: flex; flex-direction: column; gap: 10px;' /* Changed to column layout */
-    }, statsElements), container);
+    return cardElement;
 }
 
 // Toggle visibility of the stats bar

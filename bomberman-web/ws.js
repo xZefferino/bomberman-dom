@@ -13,22 +13,27 @@ function connectWebSocket(nickname, playerId, onMessage) {
     };
 
     socket.onmessage = (event) => {
-        const messages = event.data.split('\n');
-        for (const msg of messages) {
-            if (!msg.trim()) continue;
-            try {
-                const data = JSON.parse(msg);
-
-                if (data.type === "join_ack") {
-                    console.log("✅ Got join_ack:", data.payload);
-                    hasJoined = true;  // ✅ now correctly scoped
-                    continue;
+        try {
+            const messages = event.data.split('\n');
+            for (const msg of messages) {
+                if (!msg.trim()) continue;
+                
+                try {
+                    const data = JSON.parse(msg);
+                    
+                    if (data.type === "join_ack") {
+                        console.log("✅ Join acknowledged by server:", data.payload);
+                        hasJoined = true;
+                        continue;
+                    }
+                    
+                    onMessage(data);
+                } catch (e) {
+                    console.error("Failed to parse WS message:", msg.substring(0, 100) + "...", e);
                 }
-
-                onMessage(data);
-            } catch (e) {
-                console.error("Failed to parse WS message:", msg, e);
             }
+        } catch (error) {
+            console.error("Error in onmessage handler:", error);
         }
     };
 

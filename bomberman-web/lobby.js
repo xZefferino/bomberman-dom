@@ -4,19 +4,26 @@ import { connectWebSocket } from './ws.js';
 let nickname = '';
 let playerCount = 1;
 
-function renderLobby(root, { onJoin, onSendChat }) {
-    root.innerHTML = `
-        <div class="lobby-container">
-            <h2>Bomberman Lobby</h2>
-            <label>Nickname: <input id="nickname-input" type="text" maxlength="12" autofocus /></label>
-            <button id="join-btn">Join Game</button>
-            <div id="player-count">Players: ${playerCount}/4</div>
-            <div id="lobby-status"></div>
-            <div id="chat-area" style="margin-top:16px;max-height:120px;overflow-y:auto;background:#222;padding:8px;border-radius:4px;"></div>
-            <input id="chat-input" type="text" placeholder="Type a message..." style="width:70%;" disabled />
-            <button id="chat-send" disabled>Send</button>
-        </div>
+function renderLobby(root, { onJoin, onSendChat, gameInProgress }) {
+    // Clear the root to make sure we don't have leftovers from the game
+    root.innerHTML = '';
+    
+    // Then add the lobby HTML
+    const lobbyEl = document.createElement('div');
+    lobbyEl.className = 'lobby-container';
+    lobbyEl.innerHTML = `
+        <h2>Bomberman Lobby</h2>
+        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" autofocus /></label>
+        <button id="join-btn" ${gameInProgress ? 'disabled' : ''}>Join Game</button>
+        <div id="player-count">Players: ${playerCount}/4</div>
+        <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait for the next round.' : 'Ready to join!'}</div>
+        <div id="chat-area" style="margin-top:16px;max-height:120px;overflow-y:auto;background:#222;padding:8px;border-radius:4px;"></div>
+        <input id="chat-input" type="text" placeholder="Type a message..." style="width:70%;" disabled />
+        <button id="chat-send" disabled>Send</button>
     `;
+    
+    root.appendChild(lobbyEl);
+    
     document.getElementById('join-btn').onclick = () => {
         nickname = document.getElementById('nickname-input').value.trim();
         if (nickname) {

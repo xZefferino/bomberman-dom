@@ -3,7 +3,6 @@ export const FLAME_HEIGHT = 48;
 
 export const FLAME_SPRITE_WIDTH = 40;
 export const FLAME_SPRITE_HEIGHT = 40;
-// Reduced to 4 frames for flames only (excluding smoke)
 export const FLAME_TOTAL_FRAMES = 4;
 export const FLAME_COLUMNS = 2; // Top row has 2 flames
 export const FLAME_ROWS = 2;    // Two rows, each with 2 flames
@@ -14,27 +13,20 @@ flameStyle.textContent = `
         66% { opacity: 1; }
         100% { opacity: 0; }
     }
-    @keyframes smokeAppear {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-    }
 `;
 document.head.appendChild(flameStyle);
 
-export function renderFlameSprite({ imageUrl, type = 'center', power = 1, frame = 0, smokeUrl = './aseets/sprites/smoke.png' }) {
-    // Check if we're past flame animation and should show smoke
+export function renderFlameSprite({ imageUrl, type = 'center', power = 1, frame = 0}) {
     if (frame >= FLAME_TOTAL_FRAMES) {
-        // Show smoke animation instead
+
         return {
             tag: 'div',
             attrs: {
                 style: `
                     width: ${FLAME_WIDTH}px;
                     height: ${FLAME_HEIGHT}px;
-                    background: url(${smokeUrl}) no-repeat;
                     background-size: contain;
                     image-rendering: pixelated;
-                    animation: smokeAppear 0.3s forwards;
                     transform-origin: center;
                     z-index: 10;
                 `

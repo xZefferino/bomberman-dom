@@ -28,12 +28,14 @@ type ChatMessage struct {
 
 // GameStateUpdate represents the current state of the game
 type GameStateUpdate struct {
-	State       int                        `json:"state"`
-	Players     []*game.Player             `json:"players"`
-	Bombs       []*game.Bomb               `json:"bombs"`
-	PowerUps    map[string]game.PowerUp    `json:"powerUps"`
-	Map         *game.GameMap              `json:"map"`
-	Explosions  []game.TimedExplosion      `json:"explosions"` // ✅ add this field
-	Countdown   int                        `json:"countdown,omitempty"`
-	ElapsedTime int                        `json:"elapsedTime,omitempty"`
+	State              int                     `json:"state"`
+	Players            []*game.Player          `json:"players"`
+	Bombs              []*game.Bomb            `json:"bombs"`
+	PowerUps           map[string]game.PowerUp `json:"powerUps"`
+	Map                *game.GameMap           `json:"map"`
+	Explosions         []game.TimedExplosion   `json:"explosions"` // ✅ add this field
+	Countdown          int                     `json:"countdown,omitempty"`
+	ElapsedTime        int                     `json:"elapsedTime,omitempty"`
+	LobbyJoinEndTime   int64                   `json:"lobbyJoinEndTime,omitempty"`   // Unix timestamp (milliseconds)
+	InitialPlayerCount int                     `json:"initialPlayerCount,omitempty"` // Number of players at game start
 }

@@ -15,7 +15,12 @@ const (
 	GameCountdown
 	GameRunning
 	GameFinished
+	GameResetting // New state for the 5-second countdown
 )
+
+const LOBBY_JOIN_WINDOW_SECONDS = 20    // Time in seconds for lobby to remain open after 2nd player joins
+const GAME_START_COUNTDOWN_SECONDS = 10 // Time in seconds for the game to start
+const GAME_RESET_COUNTDOWN_SECONDS = 5  // Time in seconds for the game to reset
 
 type TimedExplosion struct {
 	*Explosion
@@ -33,22 +38,25 @@ type Game struct {
 	Mutex     sync.RWMutex
 
 	// Timers for game flow
-	CountdownTimer   time.Time
-	WaitingTimer     time.Time
-	NextPlayerNumber int // ✅ NEW
-	Explosions []TimedExplosion `json:"explosions"`
+	CountdownTimer     time.Time
+	WaitingTimer       time.Time
+	ResetTimer         time.Time        // Timer for the reset countdown
+	NextPlayerNumber   int              // ✅ NEW
+	Explosions         []TimedExplosion `json:"explosions"`
+	InitialPlayerCount int              // Number of players when the game started
 }
 
 // NewGame creates a new game instance
 func NewGame() *Game {
 	return &Game{
-		ID:               GenerateUUID(),
-		Map:              NewGameMap(),
-		Players:          make(map[string]*Player),
-		Bombs:            make(map[string]*Bomb),
-		PowerUps:         make(map[string]PowerUp),
-		State:            GameWaiting,
-		NextPlayerNumber: 1, // ✅ Start from 1
+		ID:                 GenerateUUID(),
+		Map:                NewGameMap(),
+		Players:            make(map[string]*Player),
+		Bombs:              make(map[string]*Bomb),
+		PowerUps:           make(map[string]PowerUp),
+		State:              GameWaiting,
+		NextPlayerNumber:   1, // ✅ Start from 1
+		InitialPlayerCount: 0, // Initialize
 	}
 }
 
@@ -57,18 +65,29 @@ func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
 	g.Mutex.Lock()
 	defer g.Mutex.Unlock()
 
+	// Prevent joining if game is in countdown, running, or finished
+	if g.State == GameCountdown || g.State == GameRunning || g.State == GameFinished {
+		return nil, errors.New("game has already started or is finished")
+	}
+
+	// Prevent joining if lobby is full
 	if len(g.Players) >= 4 {
-		return nil, errors.New("game is full")
+		return nil, errors.New("lobby is full")
+	}
+
+	// Prevent joining if lobby window is active and has expired
+	if g.State == GameWaiting && !g.WaitingTimer.IsZero() && time.Now().After(g.WaitingTimer) {
+		return nil, errors.New("lobby join window has closed")
 	}
 
 	// Fixed slot list, ordered
 	slots := []struct {
 		X, Y int
 	}{
-		{1, 2},    // Player 1
-		{13, 2},   // Player 2
-		{1, 12},   // Player 3
-		{13, 12},  // Player 4
+		{1, 2},   // Player 1
+		{13, 2},  // Player 2
+		{1, 12},  // Player 3
+		{13, 12}, // Player 4
 	}
 
 	// The number is just len(g.Players) + 1
@@ -79,24 +98,30 @@ func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
 	slot := slots[slotIndex]
 
 	player := NewPlayer(id, nickname, slot.X, slot.Y)
-	player.Number = slotIndex + 1  // 🔥 ensures Player 1 gets Number 1
+	player.Number = slotIndex + 1 // 🔥 ensures Player 1 gets Number 1
 
 	g.Players[id] = player
 	g.Map.PlacePlayer(player, slot.X, slot.Y)
 
 	log.Printf("✅ Assigned %s -> Number: %d | Pos: (%d,%d)", nickname, player.Number, slot.X, slot.Y)
-
-	if len(g.Players) >= 2 && g.WaitingTimer.IsZero() {
-		g.WaitingTimer = time.Now().Add(10 * time.Second)
+	// Start lobby join timer if this is the second player and game is waiting
+	if len(g.Players) == 2 && g.State == GameWaiting && g.WaitingTimer.IsZero() {
+		g.WaitingTimer = time.Now().Add(LOBBY_JOIN_WINDOW_SECONDS * time.Second)
+		log.Printf("Lobby join window started for %d seconds. Ends at: %v", LOBBY_JOIN_WINDOW_SECONDS, g.WaitingTimer)
 	}
-	if len(g.Players) == 4 {
+
+	// If 4 players join while waiting, immediately move to countdown
+	if len(g.Players) == 4 && g.State == GameWaiting {
+		log.Printf("Lobby full with 4 players. Moving to game countdown.")
 		g.State = GameCountdown
-		g.CountdownTimer = time.Now().Add(10 * time.Second)
+		g.CountdownTimer = time.Now().Add(GAME_START_COUNTDOWN_SECONDS * time.Second) // Use constant
+		if !g.WaitingTimer.IsZero() {
+			g.WaitingTimer = time.Time{} // Clear lobby join timer as it's no longer needed
+		}
 	}
 
 	return player, nil
 }
-
 
 // PlaceBomb places a bomb for a player
 func (g *Game) PlaceBomb(playerID string) error {
@@ -144,24 +169,26 @@ func (g *Game) MovePlayer(playerID string, dx, dy int) error {
 func (g *Game) Update() {
 	g.Mutex.Lock()
 	defer g.Mutex.Unlock()
-
 	now := time.Now()
 
 	// Handle game state transitions
 	switch g.State {
 	case GameWaiting:
-		if len(g.Players) >= 2 && !g.WaitingTimer.IsZero() && now.After(g.WaitingTimer) {
-			log.Println("Transitioning to GameCountdown")
+		// Check if lobby join window has expired (and at least 2 players)
+		if !g.WaitingTimer.IsZero() && now.After(g.WaitingTimer) && len(g.Players) >= 2 {
+			log.Printf("Lobby join window expired with %d players. Moving to game countdown.", len(g.Players))
 			g.State = GameCountdown
-			g.CountdownTimer = now.Add(10 * time.Second)
+			g.CountdownTimer = now.Add(GAME_START_COUNTDOWN_SECONDS * time.Second) // Use constant
+			g.WaitingTimer = time.Time{}                                           // Clear lobby join timer
 		}
 
 	case GameCountdown:
 		// Start the game when countdown is over
 		if now.After(g.CountdownTimer) {
-			log.Println("Transitioning to GameRunning")
+			log.Println("Game countdown finished. Starting game.")
 			g.State = GameRunning
 			g.StartTime = now
+			g.InitialPlayerCount = len(g.Players) // Set initial player count
 		}
 
 	case GameRunning:
@@ -170,29 +197,97 @@ func (g *Game) Update() {
 
 		// Check if game is over
 		alivePlayers := 0
-		for _, player := range g.Players {
-			if player.Lives > 0 {
-				alivePlayers++
+		if len(g.Players) > 0 { // Only check if there were players to begin with
+			for _, p := range g.Players {
+				if p.Lives > 0 {
+					alivePlayers++
+				}
 			}
+			// Game ends if 0 or 1 player is alive (and game had started with players)
+			if alivePlayers <= 1 {
+				log.Printf("Game finished. Alive players: %d", alivePlayers)
+				g.State = GameFinished
+				// Instead of just GameFinished, transition to GameResetting
+				// g.State = GameResetting
+				// g.ResetTimer = now.Add(GAME_RESET_COUNTDOWN_SECONDS * time.Second)
+				// log.Printf("Game finished. Resetting in %d seconds.", GAME_RESET_COUNTDOWN_SECONDS)
+			}
+		} else if !g.StartTime.IsZero() { // If game started but no players (e.g. all disconnected)
+			log.Println("Game finished as no players are left.")
+			g.State = GameFinished
+			// g.State = GameResetting
+			// g.ResetTimer = now.Add(GAME_RESET_COUNTDOWN_SECONDS * time.Second)
+			// log.Printf("Game ended with no players. Resetting in %d seconds.", GAME_RESET_COUNTDOWN_SECONDS)
 		}
 
-		if alivePlayers <= 1 {
-			g.State = GameFinished
+	case GameFinished:
+		// This state is now a brief moment before GameResetting or if triggered externally.
+		// We will initiate the reset timer here if not already set (e.g. by direct call to ResetGame)
+		if g.ResetTimer.IsZero() {
+			log.Println("GameFinished state reached, initiating reset countdown.")
+			g.State = GameResetting
+			g.ResetTimer = now.Add(GAME_RESET_COUNTDOWN_SECONDS * time.Second)
+		}
+
+	case GameResetting:
+		if now.After(g.ResetTimer) {
+			log.Println("Game reset countdown finished. Resetting game state.")
+			// Perform the actual reset of the game state
+			g.resetGameInternal()
+			g.State = GameWaiting // Transition back to waiting for players
+			log.Println("Game reset complete. Waiting for players.")
 		}
 	}
 
+	// Update player list in map for sending state
 	g.Map.Players = g.PlayersInSlotOrder()
-	// Now marshal and send the state
 
 	// Use the existing now variable
 	filtered := make([]TimedExplosion, 0, len(g.Explosions))
 
 	for _, exp := range g.Explosions {
-	if now.Sub(exp.CreatedAt) < 500*time.Millisecond {
-		filtered = append(filtered, exp)
+		if now.Sub(exp.CreatedAt) < 500*time.Millisecond {
+			filtered = append(filtered, exp)
+		}
 	}
+	g.Explosions = filtered
 }
-g.Explosions = filtered
+
+// ResetGame is an exported method that can be called to trigger a game reset sequence.
+func (g *Game) ResetGame() {
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
+
+	if g.State == GameResetting && !g.ResetTimer.IsZero() {
+		log.Println("Game is already resetting.")
+		return
+	}
+
+	log.Println("External request to reset game. Initiating reset countdown.")
+	g.State = GameResetting
+	g.ResetTimer = time.Now().Add(GAME_RESET_COUNTDOWN_SECONDS * time.Second)
+	// No need to call resetGameInternal() here, Update() will handle it when timer expires
+}
+
+// resetGameInternal resets the game to its initial state (or a new game state)
+// This is called by Update when the ResetTimer expires.
+func (g *Game) resetGameInternal() {
+	// This function assumes g.Mutex is already locked if called from Update()
+	// or ResetGame(). If called directly, ensure locking.
+	g.Map = NewGameMap()                     // Reset the map
+	g.Players = make(map[string]*Player)     // Clear players
+	g.Bombs = make(map[string]*Bomb)         // Clear bombs
+	g.PowerUps = make(map[string]PowerUp)    // Clear power-ups
+	g.State = GameWaiting                    // Set state to waiting
+	g.StartTime = time.Time{}                // Reset start time
+	g.CountdownTimer = time.Time{}           // Reset countdown timer
+	g.WaitingTimer = time.Time{}             // Reset lobby waiting timer
+	g.ResetTimer = time.Time{}               // Clear the reset timer itself
+	g.NextPlayerNumber = 1                   // Reset player number assignments
+	g.Explosions = make([]TimedExplosion, 0) // Clear explosions
+	g.InitialPlayerCount = 0                 // Reset initial player count
+
+	log.Println("Game has been reset internally.")
 }
 
 // processBombs handles bomb explosions
@@ -298,4 +393,3 @@ func (g *Game) PlayersInSlotOrder() []*Player {
 	}
 	return ordered
 }
-

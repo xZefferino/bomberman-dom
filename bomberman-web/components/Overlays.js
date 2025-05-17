@@ -1,55 +1,42 @@
 // Overlays for death/game over from index.js
+// Shows a message when the player dies
 export function showDeathMessage() {
-    // Show a simple overlay for player death
-    let overlay = document.getElementById('death-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'death-overlay';
-        overlay.style = `
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.7);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-            z-index: 9999;
-        `;
-        overlay.textContent = 'You Died!';
-        document.body.appendChild(overlay);
-    }
-    overlay.style.display = 'flex';
-    setTimeout(() => {
-        overlay.style.display = 'none';
-    }, 2000);
+    const existingOverlay = document.getElementById('death-overlay');
+    if (existingOverlay) return; // Don't show if already there
+
+    const overlay = document.createElement('div');
+    overlay.id = 'death-overlay';
+    overlay.className = 'game-overlay'; // Use the same class for styling
+    overlay.innerHTML = `
+        <div class="game-overlay-content">
+            <h2>You Died!</h2>
+            <p>Waiting for game to end...</p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
 }
 
-export function handleGameEnd(winner) {
-    // Show a simple overlay for game end
-    let overlay = document.getElementById('gameover-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'gameover-overlay';
-        overlay.style = `
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.8);
-            color: #fff;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            font-size: 48px;
-            z-index: 9999;
-        `;
-        document.body.appendChild(overlay);
+// Handles triggering the game restart after a delay
+export function handleGameEnd(winner, requestGameRestartCallback) {
+    // Remove death overlay if it exists
+    const deathOverlay = document.getElementById('death-overlay');
+    if (deathOverlay) {
+        deathOverlay.remove();
     }
-    overlay.innerHTML = winner
-        ? `<div>Game Over!<br>Winner: <b>${winner.nickname || 'Player ' + (winner.number || winner.Number || 1)}</b></div>`
-        : '<div>Game Over!<br>No winners this time.</div>';
-    overlay.style.display = 'flex';
-    setTimeout(() => {
-        overlay.style.display = 'none';
-    }, 3000);
+
+    // The visual "Game Over", winner display, and "Restarting in..." message
+    // are handled by the GameUI component.
+    // This function is now primarily responsible for triggering the restart logic after the 5s delay.
+    console.log(`handleGameEnd (Overlays.js): Game has ended. Winner: ${winner ? winner.nickname : 'No one'}. Triggering restart in 5 seconds.`);
+
+    let countdown = 5;
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+            clearInterval(countdownInterval);
+            if (requestGameRestartCallback) {
+                requestGameRestartCallback();
+            }
+        }
+    }, 1000);
 }

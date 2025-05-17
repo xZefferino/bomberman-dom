@@ -30,34 +30,64 @@ const SPRITES = {
 };
 
 // Example usage (replace with real state/game data)
-export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFrame = 0) {
-    const state = gameState.state;
-    
-    if (!state || !state.map || !Array.isArray(state.map.blocks) || state.map.blocks.length === 0) {
-        render(h('div', {}, '⚠️ Waiting for game to start...'), root);
+export function renderGame(root, gameState, selfId, localPlayerFrame = 0, onPlayAgainCallback) { // Added onPlayAgainCallback
+    const serverGame = gameState.state; // Assuming gameState is the full message, and .state is the game data
+
+    if (!serverGame || typeof serverGame.state === 'undefined') {
+        console.warn("renderGame: serverGame or serverGame.state is undefined. Full gameState:", gameState);
+        render(h('div', {}, '⚠️ Waiting for valid game state...'), root);
         return;
     }
     
-    const isGameFinished = state.state === 3;
+    // Log the crucial state values
+    console.log(
+        "renderGame: Received serverGame.state:", serverGame.state, 
+        "serverGame.countdown:", serverGame.countdown,
+        "Full serverGame object:", serverGame
+    );
+
+    const isGameFinished = serverGame.state === 3; // GameOver state (state 3)
+    // const gameStartCountdownTime = (serverGame.state === 1 && serverGame.countdown > 0) ? serverGame.countdown : 0; // GameCountdown state (state 1)
+    
+    let gameStartCountdownDisplayValue = 0;
+    if (serverGame.state === 1) { // GameCountdown state (state 1)
+        if (serverGame.countdown > 0) {
+            gameStartCountdownDisplayValue = serverGame.countdown;
+        } else {
+            // If serverGame.countdown is 0 (or less) but state is still 1,
+            // it implies the server is about to transition to state 2 (GameRunning).
+            // To prevent the countdown message from disappearing prematurely,
+            // we display "1" to hold it for this final tick.
+            // The message will disappear when serverGame.state changes to 2.
+            gameStartCountdownDisplayValue = 1;
+        }
+    }
+    
+    console.log(
+        "renderGame: Calculated isGameFinished:", isGameFinished,
+        // "Calculated gameStartCountdownTime:", gameStartCountdownTime
+        "Calculated gameStartCountdownDisplayValue:", gameStartCountdownDisplayValue
+    );
+    
     let winner = null;
-    if (isGameFinished && state.map && Array.isArray(state.map.players)) {
-        const alivePlayers = state.map.players.filter(p => (p.lives || p.Lives) > 0);
+    if (isGameFinished && serverGame.map && Array.isArray(serverGame.map.players)) {
+        const alivePlayers = serverGame.map.players.filter(p => (p.lives || p.Lives) > 0);
         if (alivePlayers.length === 1) {
             winner = alivePlayers[0];
         }
     }
 
-    let playersToRender = state.map.players || [];
-    if (!isGameFinished && state.map && state.map.players) {
-        playersToRender = state.map.players.filter(player => {
+    let playersToRender = serverGame.map.players || [];
+    if (!isGameFinished && serverGame.map && serverGame.map.players) {
+        playersToRender = serverGame.map.players.filter(player => {
             const lives = player.lives || player.Lives || 0;
             return lives > 0;
         });
     }
     
-    if (state.map && state.map.players) {
+    if (serverGame.map && serverGame.map.players) {
         const deadPlayerIds = new Set();
-        state.map.players.forEach(player => {
+        serverGame.map.players.forEach(player => {
             const id = player.id || player.ID;
             const lives = player.lives || player.Lives || 0;
             if (lives <= 0) {
@@ -65,7 +95,7 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
             }
         });
         
-        state.map.players.forEach(player => {
+        serverGame.map.players.forEach(player => {
             const id = player.id || player.ID;
             const lives = player.lives || player.Lives || 0;
             if (lives <= 0) {
@@ -91,7 +121,7 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
         });
     }
 
-    const powerUps = state.powerUps ? Object.values(state.powerUps) : [];
+    const powerUps = serverGame.powerUps ? Object.values(serverGame.powerUps) : [];
     const flameFrame = Math.floor(Date.now() / 100) % FLAME_TOTAL_FRAMES;
 
     try {
@@ -99,10 +129,10 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
             h('div', {}, [
                 GameBoard({
                     map: {
-                        ...state.map,
-                        blocks: state.map.blocks, 
+                        ...serverGame.map, // Use serverGame here
+                        blocks: serverGame.map.blocks, 
                         powerUps: powerUps,
-                        explosions: (state.explosions || []).map(explosion => ({
+                        explosions: (serverGame.explosions || []).map(explosion => ({ // Use serverGame here
                             ...explosion,
                             frame: flameFrame 
                         }))
@@ -110,12 +140,12 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
                     players: playersToRender, // Pass original filtered players
                     selfId,
                     localPlayerFrame, // Pass localPlayerFrame as a separate prop
-                    countdown: state.countdown,
-                    bombs: state.bombs || [],
+                    countdown: serverGame.countdown, // Pass the raw countdown from server state
+                    bombs: serverGame.bombs || [], // Use serverGame here
                     deadPlayers,
-                    isGameFinished,
+                    isGameFinished, // Pass calculated isGameFinished
                     winner,
-                    onPlayAgain,
+                    onPlayAgain: onPlayAgainCallback, // Pass the callback
                     helpers: {
                         SPRITES,
                         SPRITE_FRAMES,
@@ -134,7 +164,9 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
                         FLAME_HEIGHT,
                         DEATH_WIDTH,
                         DEATH_HEIGHT
-                    }
+                    },
+                    // gameStartCountdownTime: gameStartCountdownTime // Pass calculated gameStartCountdownTime
+                    gameStartCountdownTime: gameStartCountdownDisplayValue
                 }),
             ].filter(Boolean)),
             root

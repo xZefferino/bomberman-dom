@@ -8,7 +8,9 @@ import (
 
 	"bomberman-server/internal/game"
 )
+
 var loggedOnce = false
+
 // var lastLogTime time.Time
 
 // Hub maintains the set of active clients and broadcasts messages to the clients
@@ -111,17 +113,25 @@ func (h *Hub) broadcastMessage(message []byte) {
 func (h *Hub) SendGameState() {
 	// Create game state update message
 	update := GameStateUpdate{
-		State:     int(h.game.State),
-		Players:   h.game.Map.Players, // <-- Use the ordered array!
-		Bombs:     h.game.GetBombList(),
-		PowerUps:  h.game.PowerUps,
-		Map:       h.game.Map,
+		State:      int(h.game.State),
+		Players:    h.game.PlayersInSlotOrder(), // Use the ordered list of players
+		Bombs:      h.game.GetBombList(),
+		PowerUps:   h.game.PowerUps,
+		Map:        h.game.Map,
 		Explosions: h.game.Explosions,
+	}
+
+	if h.game.State == game.GameWaiting && !h.game.WaitingTimer.IsZero() {
+		update.LobbyJoinEndTime = h.game.WaitingTimer.UnixMilli()
 	}
 
 	switch h.game.State {
 	case game.GameCountdown:
-		update.Countdown = int(time.Until(h.game.CountdownTimer).Seconds())
+		remainingCountdown := int(time.Until(h.game.CountdownTimer).Seconds())
+		if remainingCountdown < 0 {
+			remainingCountdown = 0
+		}
+		update.Countdown = remainingCountdown
 	case game.GameRunning:
 		update.ElapsedTime = int(time.Since(h.game.StartTime).Seconds())
 	}
@@ -139,7 +149,6 @@ func (h *Hub) SendGameState() {
 
 	h.broadcastMessage(message)
 }
-
 
 // Add this helper to get player number by ID
 func (h *Hub) GetPlayerNumber(playerID string) int {

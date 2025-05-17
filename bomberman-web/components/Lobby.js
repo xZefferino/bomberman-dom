@@ -1,6 +1,7 @@
 // Lobby UI using mini-framework
 let nickname = '';
 let playerCount = 1;
+let lobbyCountdownInterval = null; // Keep track of the interval
 
 function renderLobby(root, { onJoin, onSendChat, gameInProgress }) {
     root.innerHTML = '';
@@ -12,6 +13,7 @@ function renderLobby(root, { onJoin, onSendChat, gameInProgress }) {
         <button id="join-btn" ${gameInProgress ? 'disabled' : ''}>Join Game</button>
         <div id="player-count">Players: ${playerCount}/4</div>
         <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait for the next round.' : 'Ready to join!'}</div>
+        <div id="lobby-countdown" style="margin-top: 10px; font-weight: bold;"></div> <!-- New element for countdown -->
         <div id="chat-area" style="margin-top:16px;max-height:120px;overflow-y:auto;background:#222;padding:8px;border-radius:4px;"></div>
         <input id="chat-input" type="text" placeholder="Type a message..." style="width:70%;" disabled />
         <button id="chat-send" disabled>Send</button>
@@ -65,4 +67,28 @@ function appendChatMessage({ playerName, message, playerNumber }) {
     }
 }
 
-export { renderLobby, updatePlayerCount, appendChatMessage };
+// New function to update lobby countdown display
+function updateLobbyCountdownDisplay(remainingSeconds) {
+    const countdownEl = document.getElementById('lobby-countdown');
+    if (countdownEl) {
+        if (remainingSeconds > 0) {
+            countdownEl.textContent = `Lobby closes in ${remainingSeconds}s`;
+        } else {
+            countdownEl.textContent = 'Lobby closed. Starting game soon...';
+        }
+    }
+}
+
+// New function to clear the lobby countdown display and interval
+function clearLobbyCountdown() {
+    if (lobbyCountdownInterval) {
+        clearInterval(lobbyCountdownInterval);
+        lobbyCountdownInterval = null;
+    }
+    const countdownEl = document.getElementById('lobby-countdown');
+    if (countdownEl) {
+        countdownEl.textContent = '';
+    }
+}
+
+export { renderLobby, updatePlayerCount, appendChatMessage, updateLobbyCountdownDisplay, clearLobbyCountdown, lobbyCountdownInterval };

@@ -1,7 +1,7 @@
 // GameBoard component extracted from game.js
 import { Tile } from './Tile.js';
 import { h } from '../framework/index.js';
-export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers, isGameFinished, winner, onPlayAgain, localPlayerFrame, helpers }) {
+export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers, isGameFinished, winner, onPlayAgain, localPlayerFrame, helpers, gameStartCountdownTime }) {
     const { SPRITES, SPRITE_FRAMES, BLOCK_WALL, BLOCK_DESTRUCTIBLE, BLOCK_INDESTRUCTIBLE, TILE_SIZE, renderBombSprite, renderFlameSprite, renderPowerUpSprite, renderDeathSprite, getFlameType, BOMB_WIDTH, BOMB_HEIGHT, FLAME_WIDTH, FLAME_HEIGHT, DEATH_WIDTH, DEATH_HEIGHT } = helpers;
 
     // Try different ways to access powerUps
@@ -16,12 +16,13 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
         h('div', {
             style: `display:inline-block; background:#222; line-height:0; position:relative; ${isGameFinished ? 'filter: brightness(0.8);' : ''}`
         },
-            ...(countdown > 0 ? [
+            // Use gameStartCountdownTime for the "Game starts in X" message
+            ...(gameStartCountdownTime > 0 ? [
                 h('div', {
                     style: `position:absolute;left:0;top:0;width:100%;height:100%;z-index:10;
                             background:rgba(0,0,0,0.7);color:#fff;font-size:48px;
                             display:flex;align-items:center;justify-content:center;`
-                }, `Game starts in ${countdown}`)
+                }, `Game starts in ${gameStartCountdownTime}`)
             ] : []),
             
             // Show game over message if the game is finished
@@ -257,5 +258,33 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
             }).filter(Boolean)
         )
     );
+}
+
+// GameUI component extracted from game.js
+export function GameUI({ map, players, selfId, countdown, bombs, deadPlayers, isGameFinished, winner, /* onPlayAgain, REMOVED */ helpers, gameStartTime }) {
+    // Pass gameStartTime (which is the countdown value for game start) to GameBoard
+    const gameBoardComponent = GameBoard({ map, players, selfId, localPlayerFrame: map.localPlayerFrame, bombs, deadPlayers, isGameFinished, winner, helpers, gameStartCountdownTime: countdown });
+
+    let overlayContent = null;
+    if (isGameFinished) {
+        const winnerName = winner ? (winner.nickname || `Player ${winner.number}`) : 'No one';
+        overlayContent = h('div', { class: 'game-overlay-content' }, [
+            h('h2', {}, 'Game Over!'),
+            h('p', {}, `${winnerName} wins!`),
+            h('p', { id: 'restart-countdown' }, 'Restarting in 5 seconds...') // Countdown message
+        ]);
+    } else if (countdown !== undefined && countdown > 0) {
+        overlayContent = h('div', { class: 'game-overlay-content' }, [
+            h('h2', {}, 'Get Ready!'),
+            h('p', {}, `Game starts in ${countdown} seconds`)
+        ]);
+    }
+
+    return h('div', { id: 'game-ui', style: 'position: relative;' }, [
+        gameBoardComponent,
+        // The overlay for "Game starts in X" is now handled inside GameBoard directly.
+        // We only need the Game Over overlay here.
+        (isGameFinished && overlayContent) ? h('div', { class: 'game-overlay' }, overlayContent) : null
+    ]);
 }
 

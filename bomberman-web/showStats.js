@@ -52,6 +52,22 @@ function PlayerCard(player, isCurrentPlayer = false) {
         }
     }
 
+    // Lives display logic
+    let livesDisplayValue = '';
+    const maxDisplayIcons = 3;
+    // Default to maxDisplayIcons (3) if player.lives is undefined
+    let currentLives = (typeof player.lives === 'number') ? player.lives : maxDisplayIcons;
+
+    if (currentLives >= maxDisplayIcons) {
+        livesDisplayValue = Array(maxDisplayIcons).fill('❤️').join('');
+    } else if (currentLives <= 0) { // Handles 0 or negative lives
+        livesDisplayValue = Array(maxDisplayIcons).fill('💀').join('');
+    } else {
+        const heartsStr = Array(currentLives).fill('❤️').join('');
+        const skullsStr = Array(maxDisplayIcons - currentLives).fill('💀').join('');
+        livesDisplayValue = heartsStr + skullsStr;
+    }
+
     return h('div', {
         style: `
             background: rgba(0, 0, 0, 0.8);
@@ -111,7 +127,7 @@ function PlayerCard(player, isCurrentPlayer = false) {
         }, [
             // Lives
             h('span', {}, 'Lives:'),
-            h('span', {}, Array(player.lives || 3).fill('❤️').join('')),
+            h('span', {}, livesDisplayValue),
             
             // Speed
             h('span', {}, 'Speed:'),

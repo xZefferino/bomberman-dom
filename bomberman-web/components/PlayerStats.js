@@ -34,6 +34,33 @@ function PlayerCard(player, isCurrentPlayer = false) {
     const borderColor = playerColors[(number - 1) % playerColors.length];
     let speedText = player.speed ? player.speed.toFixed(1) : '1.0';
     let speedColor = '#ffffff';
+
+    // Speed indicator logic (can be expanded as in the previous example if needed)
+    if (player.speed && player.speed > 1.0) {
+        if (player.speed >= 2.0) {
+            speedColor = '#00ff00'; // Green for high speed
+        } else if (player.speed >= 1.5) {
+            speedColor = '#ffff00'; // Yellow for medium speed
+        } else {
+            speedColor = '#00ffff'; // Cyan for slight speed boost
+        }
+    }
+
+    // Lives display logic
+    let livesDisplayValue = '';
+    const maxDisplayIcons = 3;
+    let currentLives = (typeof player.lives === 'number') ? player.lives : maxDisplayIcons;
+
+    if (currentLives >= maxDisplayIcons) {
+        livesDisplayValue = Array(maxDisplayIcons).fill('❤️').join('');
+    } else if (currentLives <= 0) { // Handles 0 or negative lives
+        livesDisplayValue = Array(maxDisplayIcons).fill('💀').join(''); // This line shows skulls when all lives are gone
+    } else {
+        const heartsStr = Array(currentLives).fill('❤️').join('');
+        const skullsStr = Array(maxDisplayIcons - currentLives).fill('💀').join('');
+        livesDisplayValue = heartsStr + skullsStr;
+    }
+
     return h('div', {
         style: `
             background: rgba(0, 0, 0, 0.8);
@@ -89,7 +116,7 @@ function PlayerCard(player, isCurrentPlayer = false) {
             `
         }, [
             h('span', {}, 'Lives:'),
-            h('span', {}, Array(player.lives || 3).fill('❤️').join('')),
+            h('span', {}, livesDisplayValue),
             h('span', {}, 'Speed:'),
             h('span', { style: `color: ${speedColor};` }, speedText),
             h('span', {}, 'Bombs:'),

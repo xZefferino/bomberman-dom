@@ -154,7 +154,14 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
 
 
    ...(explosions.flatMap((explosion, idx) => {
-    const frame = explosion.frame || 0; // comes from state
+    const timestamp = explosion.timestamp || Date.now();
+    const frame = explosion.frame || 0;
+    const elapsedTime = Date.now() - timestamp;
+    
+    // Skip rendering if the explosion is too old (over 750ms)
+    if (elapsedTime > 750) {
+        return [];
+    }
 
     return explosion.tiles.map((tile, i) => {
         const type = getFlameType(tile, explosion.center, explosion);
@@ -162,21 +169,26 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
             imageUrl: './aseets/sprites/flame.png',
             type,
             power: explosion.range,
-            frame
+            frame,
+            elapsedTime
         });
 
+        // Base z-index for flames starts at 6 (above bombs)
+        // Add small increments for newer explosions
+        const baseZIndex = 6;
+        const timeOffset = Math.floor((750 - elapsedTime) / 100);
+        const dynamicZIndex = baseZIndex + timeOffset;
+
         return h(flameSprite.tag, {
-            key: `flame-${tile.x}-${tile.y}-${idx}-${i}`,
+            key: `flame-${tile.x}-${tile.y}-${timestamp}-${idx}-${i}`,
             ...flameSprite.attrs,
             style: `
                 ${flameSprite.attrs.style || ''}
                 position: absolute;
                 left: ${tile.x * TILE_SIZE}px;
                 top: ${tile.y * TILE_SIZE}px;
-                width: ${FLAME_WIDTH}px;
-                height: ${FLAME_HEIGHT}px;
-                z-index: 10;
-                pointer-events: none;
+                z-index: ${dynamicZIndex};
+                will-change: opacity, transform;
             `
         });
     });

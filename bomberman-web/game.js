@@ -38,55 +38,38 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
         return;
     }
     
-    // Check if game is finished (state 3)
     const isGameFinished = state.state === 3;
-
-    // Find the winner if the game is finished
     let winner = null;
     if (isGameFinished && state.map && Array.isArray(state.map.players)) {
-        // Winner is the last player with lives > 0
         const alivePlayers = state.map.players.filter(p => (p.lives || p.Lives) > 0);
         if (alivePlayers.length === 1) {
             winner = alivePlayers[0];
         }
     }
 
-    // Even if game is finished, we should still render the last state
-    // but don't filter out dead players in this case, so we can see where everyone ended up
+    let playersToRender = state.map.players || [];
     if (!isGameFinished && state.map && state.map.players) {
-        // Filter out players with 0 lives from rendering only if game isn't finished
-        state.map.players = state.map.players.filter(player => {
+        playersToRender = state.map.players.filter(player => {
             const lives = player.lives || player.Lives || 0;
             return lives > 0;
         });
     }
     
-    // Process player deaths more robustly
     if (state.map && state.map.players) {
-        // Create dead player tracking sets
         const deadPlayerIds = new Set();
-        const currentPlayerIds = new Set();
-        
-        // Track all current players
         state.map.players.forEach(player => {
             const id = player.id || player.ID;
-            currentPlayerIds.add(id);
-            
             const lives = player.lives || player.Lives || 0;
             if (lives <= 0) {
                 deadPlayerIds.add(id);
             }
         });
         
-        // First pass: identify new dead players and start their animations
         state.map.players.forEach(player => {
             const id = player.id || player.ID;
             const lives = player.lives || player.Lives || 0;
-            
             if (lives <= 0) {
-                // Start death animation if not already started
                 if (!isPlayerDying(id) && !isDeathComplete(id)) {
-                    console.log(`🔴 NEW DEATH: Player ${id} is dead, starting death animation`);
                     const pos = player.position || player.Position;
                     const number = player.number || player.Number || 1;
                     handlePlayerDeath(id, number, pos);
@@ -94,61 +77,45 @@ export function renderGame(root, gameState, selfId, onPlayAgain, localPlayerFram
             }
         });
         
-        // Remove dead players from the main players array
-        state.map.players = state.map.players.filter(player => {
-            const id = player.id || player.ID;
-            return !deadPlayerIds.has(id);
-        });
-        
-        // Add a debug snapshot of current death animations
-        const activeDeaths = debugDeathState();
-        if (activeDeaths > 0) {
-            console.log(`🔄 Active death animations: ${activeDeaths}`);
+        if (!isGameFinished) {
+            playersToRender = playersToRender.filter(player => {
+                const id = player.id || player.ID;
+                return !deadPlayerIds.has(id);
+            });
         }
         
-        // Update any ongoing death animations
-        Object.entries(deadPlayers).forEach(([id, state]) => {
-            if (!state.done) {
-                handlePlayerDeath(id, state.playerNumber, state.position);
+        Object.entries(deadPlayers).forEach(([id, deathState]) => {
+            if (!deathState.done) {
+                handlePlayerDeath(id, deathState.playerNumber, deathState.position);
             }
         });
     }
 
-    // Extract powerUps from the correct location in the state
     const powerUps = state.powerUps ? Object.values(state.powerUps) : [];
     const flameFrame = Math.floor(Date.now() / 100) % FLAME_TOTAL_FRAMES;
 
-    // Clone players and inject localPlayerFrame for the self player
-    const playersWithLocalFrame = (state.map.players || []).map(p => {
-        if ((p.id || p.ID) === selfId) {
-            return { ...p, frame: localPlayerFrame };
-        }
-        return p;
-    });
-
-    // Update the renderGame function where you call GameBoard
     try {
-        // Render the game board with all components
         render(
             h('div', {}, [
                 GameBoard({
                     map: {
                         ...state.map,
+                        blocks: state.map.blocks, 
                         powerUps: powerUps,
                         explosions: (state.explosions || []).map(explosion => ({
                             ...explosion,
                             frame: flameFrame 
                         }))
                     },
-                    players: playersWithLocalFrame, // <-- use the new array here!
+                    players: playersToRender, // Pass original filtered players
                     selfId,
+                    localPlayerFrame, // Pass localPlayerFrame as a separate prop
                     countdown: state.countdown,
                     bombs: state.bombs || [],
                     deadPlayers,
                     isGameFinished,
                     winner,
-                    onPlayAgain, // Pass the callback here
-                    localPlayerFrame,
+                    onPlayAgain,
                     helpers: {
                         SPRITES,
                         SPRITE_FRAMES,

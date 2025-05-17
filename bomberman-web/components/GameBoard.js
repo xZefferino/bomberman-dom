@@ -1,20 +1,14 @@
 // GameBoard component extracted from game.js
 import { Tile } from './Tile.js';
 import { h } from '../framework/index.js';
-export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers, isGameFinished, winner, onPlayAgain, localPlayerFrame = 0, helpers }) {
+export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers, isGameFinished, winner, onPlayAgain, localPlayerFrame, helpers }) {
     const { SPRITES, SPRITE_FRAMES, BLOCK_WALL, BLOCK_DESTRUCTIBLE, BLOCK_INDESTRUCTIBLE, TILE_SIZE, renderBombSprite, renderFlameSprite, renderPowerUpSprite, renderDeathSprite, getFlameType, BOMB_WIDTH, BOMB_HEIGHT, FLAME_WIDTH, FLAME_HEIGHT, DEATH_WIDTH, DEATH_HEIGHT } = helpers;
 
     // Try different ways to access powerUps
     const powerUps = map.powerUps || [];
     const explosions = map.explosions || [];
     
-    console.log("PowerUps being rendered:", powerUps);
-
-    const playerGrid = {};
-    players.forEach((p) => {
-        const pos = p.position || p.Position;
-        playerGrid[`${pos.y},${pos.x}`] = { ...p };
-    });
+    // console.log("PowerUps being rendered:", powerUps); // Keep for debugging if needed
 
     return h('div', {
         style: `display: flex; justify-content: center; align-items: center; width: 100%; height: 100vh;`
@@ -74,13 +68,67 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
             map.blocks.map((row, y) =>
                 h('div', { style: 'display: flex;' },
                     row.map((type, x) => {
-                        const player = playerGrid[`${y},${x}`];
-                        const isSelf = player && (player.ID === selfId || player.id === selfId);
-                        // Pass SPRITES and other helpers to Tile
-                        return Tile({ type, x, y, player, isSelf, SPRITES, SPRITE_FRAMES, BLOCK_WALL, BLOCK_DESTRUCTIBLE, BLOCK_INDESTRUCTIBLE, TILE_SIZE });
+                        // REMOVED: player lookup and isSelf calculation here
+                        // Pass only necessary props to Tile
+                        return Tile({ type, x, y, SPRITES, SPRITE_FRAMES, BLOCK_WALL, BLOCK_DESTRUCTIBLE, BLOCK_INDESTRUCTIBLE, TILE_SIZE });
                     })
                 )
             ),
+
+            // ADDED: Direct player rendering loop
+            ...(players.flatMap((player) => {
+                const pos = player.position || player.Position;
+                if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') {
+                    // console.warn("Skipping player with invalid position:", player); // Keep for debugging
+                    return []; // Return empty array for flatMap
+                }
+
+                const elementsToRender = [];
+
+                const isSelf = (player.id || player.ID) === selfId;
+                const directionMap = { up: 0, left: 1, down: 2, right: 3 };
+                const row = directionMap[player.direction || 'down'];
+                
+                // Use localPlayerFrame for self, otherwise player.frame
+                const frame = isSelf ? localPlayerFrame : (player.frame || 0); 
+                const frameWidth = 64;
+                const frameHeight = 96;
+                const number = player.number || player.Number || 1;
+
+                const playerStyle = `
+                    position:absolute;
+                    left:${pos.x * TILE_SIZE - 8}px; 
+                    top:${pos.y * TILE_SIZE - 48}px;
+                    width:${frameWidth}px;
+                    height:${frameHeight}px;
+                    background: url(${SPRITES.players[number - 1]}) no-repeat;
+                    background-position: -${frame * frameWidth}px -${row * frameHeight}px;
+                    background-size: ${frameWidth * SPRITE_FRAMES}px ${frameHeight * 4}px;
+                    z-index:4;
+                    ${isSelf ? 'filter:drop-shadow(0 0 8px #0f0);' : ''}
+                `;
+                elementsToRender.push(h('div', { style: playerStyle, key: `player-${player.id || player.ID}` }));
+
+                if (player.speed && player.speed > 1.0) {
+                    elementsToRender.push(
+                        h('div', {
+                            key: `speed-${player.id || player.ID}`,
+                            style: `
+                                position: absolute;
+                                left: ${pos.x * TILE_SIZE}px; 
+                                top: ${pos.y * TILE_SIZE}px;   
+                                width: ${TILE_SIZE}px; 
+                                height: ${TILE_SIZE}px;
+                                background: radial-gradient(circle, transparent 70%, rgba(255,255,0,0.3) 100%);
+                                z-index: 3; 
+                                pointer-events: none;
+                            `
+                        })
+                    );
+                }
+                return elementsToRender;
+            })),
+            
             ...(bombs.map((bomb) => {
                 const pos = bomb.position || bomb.Position;
                 const frame = Math.floor(Date.now() / 150) % 7;
@@ -160,38 +208,7 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
                 }, h(sprite.tag, sprite.attrs));
             }).filter(Boolean)),
 
-            // 🧍 Render players absolutely on top
-            ...players.map((p) => {
-                const pos = p.position || p.Position;
-                const number = p.number || p.Number || 1;
-                const isSelf = p.ID === selfId;
-                const rowMap = { up: 0, left: 1, down: 2, right: 3 };
-                const row = rowMap[p.direction || 'down'];
-                // Use localPlayerFrame for self, server frame for others
-                const frame = isSelf && typeof localPlayerFrame === 'number'
-                    ? localPlayerFrame % (SPRITE_FRAMES || 9)
-                    : (p.frame || 0) % (SPRITE_FRAMES || 9);
-                const frameWidth = 64;
-                const frameHeight = 96;
-                return h('div', {
-                    key: p.ID,
-                    style: `
-                        position: absolute;
-                        left: ${pos.x * TILE_SIZE - 8}px;
-                        top: ${pos.y * TILE_SIZE - 48}px;
-                        width: ${frameWidth}px;
-                        height: ${frameHeight}px;
-                        background: url(${SPRITES.players[number - 1]}) no-repeat;
-                        background-position: -${frame * frameWidth}px -${row * frameHeight}px;
-                        background-size: ${frameWidth * (SPRITE_FRAMES || 9)}px ${frameHeight * 4}px;
-                        z-index: 5;
-                        transition: left 0.2s linear, top 0.2s linear;
-                        ${isSelf ? 'filter:drop-shadow(0 0 8px #0f0);' : ''}
-                    `
-                });
-            }),
-
-            // 💀 Render death animations for any dead players
+            // Commented out: Players are already rendered by Tile components (this comment is now misleading, live players are rendered above)
             ...Object.entries(deadPlayers)
             .filter(([id, state]) => !state.done)
             .map(([id, state]) => {

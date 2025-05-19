@@ -25,46 +25,6 @@ export function GameBoard({ map, players, selfId, countdown, bombs, deadPlayers,
                 }, `Game starts in ${gameStartCountdownTime}`)
             ] : []),
             
-            // Show game over message if the game is finished
-            ...(isGameFinished ? [
-                h('div', {
-                    style: `position:absolute;left:0;top:0;width:100%;height:100%;z-index:50;
-                            background:rgba(0,0,0,0.5);color:#fff;font-size:48px;
-                            display:flex;align-items:center;justify-content:center;`
-                }, h('div', {
-                    style: `text-align: center;`
-                }, [
-                    h('div', {}, 'GAME OVER'),
-                    h('div', {
-                        style: `font-size: 30px; margin-top: 50px;`
-                    }, winner
-                        ? `${winner.nickname || 'Player ' + (winner.number || winner.Number || 1)} WINS!`
-                        : 'No winners this time!'
-                    ),
-                    h('button', {
-                        style: `
-                            margin-top: 30px;
-                            padding: 10px 20px;
-                            font-size: 18px;
-                            background: #4CAF50;
-                            color: white;
-                            border: none;
-                            border-radius: 5px;
-                            cursor: pointer;
-                        `,
-                        onclick: () => {
-                            console.log("Play Again button clicked - resetting game");
-                            if (typeof onPlayAgain === 'function') {
-                                onPlayAgain(); // Call the provided callback instead of reloading
-                            } else {
-                                console.log("No onPlayAgain callback provided, falling back to page reload");
-                                window.location.reload();
-                            }
-                        }
-                    }, 'Play Again')
-                ]))
-            ] : []),
-
             // 🔲 Render map tiles
             map.blocks.map((row, y) =>
                 h('div', { style: 'display: flex;' },

@@ -54,9 +54,10 @@ func (s *Server) SetupRoutes() {
     s.Router.HandleFunc("/ws", s.handleWebSocket)
     s.Router.HandleFunc("/api/game/join", s.handleJoinGame).Methods("POST")
     s.Router.HandleFunc("/api/game/status", s.handleGameStatus).Methods("GET")
+
     
     // Serve static files
-    s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("./static")))
+    s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("./bomberman-web/")))
 }
 
 // StartWebSocketHub starts the WebSocket hub

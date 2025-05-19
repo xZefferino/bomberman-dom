@@ -46,9 +46,10 @@ export function renderGame(root, gameState, selfId, localPlayerFrame = 0, onPlay
         "Full serverGame object:", serverGame
     );
 
-    const isGameFinished = serverGame.state === 3; // GameOver state (state 3)
-    // const gameStartCountdownTime = (serverGame.state === 1 && serverGame.countdown > 0) ? serverGame.countdown : 0; // GameCountdown state (state 1)
-    
+    const isGameFinished = serverGame.state === 3 || serverGame.state === 4; // GameOver state (state 3) or Resetting (state 4)
+    const gameIsActuallyOver = serverGame.state === 3; // Use this to trigger one-time actions like calling handleGameEnd
+
+    // Calculate gameStartCountdownDisplayValue (for "Game starts in X")
     let gameStartCountdownDisplayValue = 0;
     if (serverGame.state === 1) { // GameCountdown state (state 1)
         if (serverGame.countdown > 0) {
@@ -78,7 +79,9 @@ export function renderGame(root, gameState, selfId, localPlayerFrame = 0, onPlay
     }
 
     let playersToRender = serverGame.map.players || [];
-    if (!isGameFinished && serverGame.map && serverGame.map.players) {
+    if (isGameFinished) {
+        playersToRender = []; // Don't render any players on the board itself when game is finished
+    } else if (serverGame.map && serverGame.map.players) {
         playersToRender = serverGame.map.players.filter(player => {
             const lives = player.lives || player.Lives || 0;
             return lives > 0;

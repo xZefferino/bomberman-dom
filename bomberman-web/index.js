@@ -159,6 +159,9 @@ function startLobby() {
     stopGameLoop();
     window.removeEventListener('keydown', onKeyDown, false);
     window.removeEventListener('keyup', onKeyUp, false);
+
+    console.log('[startLobby] Called. gameInProgress is:', gameInProgress, 'inGame is:', inGame); // Add this line for diagnostics
+
     renderLobby(root, {
         onJoin: connectPlayer,
         onSendChat: (msg) => {
@@ -293,8 +296,11 @@ function handleWSMessage(data) {
 function handleGameStateUpdate(newState) {
     console.log("Game state update:", newState);
     // Update gameInProgress based on the new state
+    const oldState = gameState?.state?.state; // Store previous state before updating gameState
+    const currentServerState = newState?.state?.state;
+
     if (newState?.state) {
-        const currentServerState = newState.state.state; // 0: Waiting, 1: Countdown, 2: Running, 3: Finished, 4: Resetting
+        // const currentServerState = newState.state.state; // 0: Waiting, 1: Countdown, 2: Running, 3: Finished, 4: Resetting // Already defined
         if (currentServerState === 1 || currentServerState === 2 ) { // Countdown or Running
             gameInProgress = true;
             stopAndClearLobbyCountdown(); // Stop lobby countdown if game starts
@@ -315,7 +321,7 @@ function handleGameStateUpdate(newState) {
         }
     }
     
-    if (!inGame && newState?.state?.state >= 1) { // GameCountdown or later
+    if (!inGame && currentServerState >= 1) { // GameCountdown or later
         const playerFromServerState = newState?.state?.map?.players?.find(p => (p.id || p.ID) === currentPlayerID);
         if (currentPlayerID && playerFromServerState) {
             console.log("Current player (" + currentPlayerID + ") is in the game state. Starting game interface: state = " + newState.state.state);
@@ -348,7 +354,7 @@ function handleGameStateUpdate(newState) {
         }
     } 
     
-    gameState = newState;
+    gameState = newState; // Update global gameState AFTER oldState has been captured and used
     
     if (inGame) {
         const playerState = newState?.state?.map?.players?.find(
@@ -362,22 +368,34 @@ function handleGameStateUpdate(newState) {
             showDeathMessage();
         }
         playerWasAlive = isPlayerAlive;
+
+        // Check for game end condition to call handleGameEnd
+        // Call it only once when transitioning from a non-finished state to state 3
+        if (currentServerState === 3 && oldState !== 3) {
+            const alivePlayers = (newState?.state?.map?.players || [])
+                .filter(p => (p.lives || p.Lives) > 0);
+            const winner = alivePlayers.length === 1 ? alivePlayers[0] : null;
+            console.log("Game has officially ended (state 3 detected by client). Winner:", winner);
+            handleGameEnd(winner, requestGameRestart); // Pass the actual requestGameRestart function
+        }
     }
 
-    if (inGame && newState?.state?.state === 2) { // 2 = GameRunning
+    // Client-side check for game end (can be a fallback or primary if server doesn't send state 3 reliably for this)
+    // This might be redundant if the server reliably transitions to state 3 and the above block catches it.
+    if (inGame && currentServerState === 2) { // 2 = GameRunning
         const alivePlayers = (newState?.state?.map?.players || [])
             .filter(p => (p.lives || p.Lives) > 0);
         
-        const initialPlayerCount = newState?.state?.initialPlayerCount || (newState?.state?.map?.players?.length || 0); // Fallback if initialPlayerCount not sent
+        const initialPlayerCount = newState?.state?.initialPlayerCount || (newState?.state?.map?.players?.length || 0); 
         
-        // Check if game is not already Finished (3) or Resetting (4)
-        if (newState.state.state !== 3 && newState.state.state !== 4) {
+        if (newState.state.state !== 3 && newState.state.state !== 4) { // Ensure not already finished/resetting
             if (alivePlayers.length <= 1 && initialPlayerCount >= 1) { 
-                const winner = alivePlayers.length === 1 ? alivePlayers[0] : null;
-                console.log("Game has ended! Winner:", winner);
-                // The server will transition to state 3 (Finished), then 4 (Resetting).
-                // The renderGame function, seeing state 3 or 4, will call handleGameEnd (from Overlays.js),
-                // which then triggers requestGameRestart after its local 5s timer.
+                // This condition might trigger handleGameEnd if server is slow to send state 3.
+                // However, the server should be the source of truth for game end.
+                // Consider if this client-side detection is still needed.
+                // If kept, ensure handleGameEnd is not called multiple times.
+                // For now, relying on the `oldState !== 3` check above for the primary call.
+                console.log("Client detected game end condition (<=1 alive player in GameRunning state). Server should confirm with state 3.");
             }
         }
     }
@@ -450,8 +468,20 @@ function stopGameLoop() {
 }
 
 function handleHeldMovement() {
-    if (!inGame || !isJoined() || !currentPlayerID) return;
+    if (!inGame || !isJoined() || !currentPlayerID || !gameState || !gameState.state || !gameState.state.map || !gameState.state.map.players) return;
     const now = performance.now();
+
+    const selfPlayer = gameState.state.map.players.find(p => (p.id || p.ID) === currentPlayerID);
+    if (!selfPlayer) return;
+
+    // Use player's speed from gameState, default to 1.0 if not defined
+    const playerSpeed = selfPlayer.speed || 1.0;
+    // Adjust movement interval based on speed. Higher speed = lower interval.
+    // MOVEMENT.BASE_COOLDOWN could be a constant like 160ms for speed 1.0
+    // MOVEMENT.SPEED_FACTOR could be 1.0 or adjusted as needed.
+    const currentMoveDebounce = MOVE_DEBOUNCE / playerSpeed; // Faster speed allows more frequent messages
+    const currentFrameInterval = FRAME_INTERVAL / playerSpeed; // Faster speed animates quicker
+
     let moveAction = null;
     if (keysPressed['ArrowUp'] || keysPressed['w']) moveAction = 'move_up';
     else if (keysPressed['ArrowDown'] || keysPressed['s']) moveAction = 'move_down';
@@ -460,14 +490,14 @@ function handleHeldMovement() {
 
     if (moveAction) {
         // Animate local player frame for smoothness
-        if (now - localPlayerLastMove > FRAME_INTERVAL) {
+        if (now - localPlayerLastMove > currentFrameInterval) {
             walkFrameIndex = (walkFrameIndex + 1) % SPRITE_FRAMES;
             localPlayerFrame = walkFrameIndex;
             localPlayerLastMove = now;
         }
 
-        // Send movement action to server, debounced
-        if (lastMoveDirection !== moveAction || now - lastMoveSent > MOVE_DEBOUNCE) {
+        // Send movement action to server, debounced by player speed
+        if (lastMoveDirection !== moveAction || now - lastMoveSent > currentMoveDebounce) {
             sendAction(moveAction);
             lastMoveDirection = moveAction;
             lastMoveSent = now;
@@ -481,7 +511,8 @@ function handleHeldMovement() {
 
 function renderGameWithLocalFrame(root, gameState, selfId, localPlayerFrame) {
     // Corrected argument order: localPlayerFrame is the 4th argument, onPlayAgainCallback is the 5th.
-    renderGame(root, gameState, selfId, localPlayerFrame, null);
+    // Pass requestGameRestart so the "Play Again" button in GameBoard can use it.
+    renderGame(root, gameState, selfId, localPlayerFrame, requestGameRestart);
 }
 
 function onKeyDown(e) {

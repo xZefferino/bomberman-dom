@@ -1,5 +1,7 @@
 package game
 
+import "time" // Ensure time package is imported
+
 type Position struct {
 	X int `json:"x"`
 	Y int `json:"y"`
@@ -17,19 +19,23 @@ type Player struct {
 	Direction   string   `json:"direction"`
 	Frame       int      `json:"frame"`
 	Number      int      `json:"number"` // <-- add this
+	IsConnected bool     `json:"-"` // Server-side flag
+	DisconnectedAt time.Time `json:"-"` // Server-side timestamp
 }
 
 // NewPlayer creates a new player with default values
 func NewPlayer(id, nickname string, startX, startY int) *Player {
 	return &Player{
-		ID:          id,
-		Nickname:    nickname,
-		Position:    Position{X: startX, Y: startY},
-		Lives:       3,
-		Speed:       1.0,
-		MaxBombs:    1,
-		BombPower:   1,
-		ActiveBombs: 0,
+		ID:             id,
+		Nickname:       nickname,
+		Position:       Position{X: startX, Y: startY},
+		Lives:          PLAYER_MAX_LIVES, // Use constant if available, otherwise 3
+		Speed:          1.0,
+		MaxBombs:       1,
+		BombPower:      1,
+		ActiveBombs:    0,
+		IsConnected:    true,
+		DisconnectedAt: time.Time{},
 	}
 }
 

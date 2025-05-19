@@ -1,9 +1,8 @@
-import { renderLobby, updatePlayerCount, appendChatMessage, updateLobbyCountdownDisplay, clearLobbyCountdown } from './components/Lobby.js'; // Removed lobbyCountdownInterval import
-import { updatePlayerStats } from './components/PlayerStats.js';
+import { renderLobby, updatePlayerCount, appendChatMessage, updateLobbyCountdownDisplay, clearLobbyCountdown } from './components/Lobby.js';
+import { removeStatsBar, updatePlayerStats } from './components/PlayerStats.js'; // Ensure this import is correct
 import { showDeathMessage, handleGameEnd } from './components/Overlays.js';
 import { connectWebSocket, socket, isJoined } from './ws.js';
 import { renderGame } from './game.js';
-import { MOVEMENT } from './stats.js';
 
 // Add a gameState variable to track if a game is in progress
 let gameInProgress = false;
@@ -83,20 +82,56 @@ async function joinGame(nickname) {
 // When connecting a new player, check game state
 function connectPlayer(nickname) {
     // This client-side check is a quick feedback. Server is the source of truth.
-    if (gameInProgress) {
+    if (gameInProgress && !currentPlayerID) { // Allow if currentPlayerID exists (attempting re-join)
         console.log("Game in progress or lobby closed, can't join now (client-side check)");
         alert("Game is currently in progress or the lobby is closed. Please wait.");
+        // Ensure lobby UI reflects this, potentially by re-rendering with gameInProgress = true
+        const lobbyContainer = document.getElementById('lobby-container');
+        if (lobbyContainer && lobbyContainer.parentElement === root) {
+            renderLobby(root, {
+                initialNickname: currentNickname || '', // Use currentNickname if available
+                onJoin: connectPlayer,
+                onSendChat: (msg) => {
+                    if (!isJoined()) return;
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({
+                            type: 'chat',
+                            playerId: currentPlayerID,
+                            payload: { message: msg }
+                        }));
+                    }
+                },
+                gameInProgress: true // Force gameInProgress true here
+            });
+        }
         return false;
     }
     
-    // Your existing connection logic here
-    currentNickname = nickname;
+    currentNickname = nickname; // Set currentNickname from the input
     joinGame(nickname).then(playerID => {
-        currentPlayerID = playerID;
-        connectWebSocket(nickname, currentPlayerID, handleWSMessage);
+        if (playerID) {
+            currentPlayerID = playerID;
+            // Store details in localStorage
+            localStorage.setItem('bomberman_currentPlayerID', currentPlayerID);
+            localStorage.setItem('bomberman_currentNickname', currentNickname);
+            console.log(`Stored session for ${currentNickname} (${currentPlayerID})`);
+            connectWebSocket(currentNickname, currentPlayerID, handleWSMessage);
+        } else {
+            // Handle failed join (e.g., server rejected, playerID not returned)
+            // Clear any stored credentials if join fails definitively
+            localStorage.removeItem('bomberman_currentPlayerID');
+            localStorage.removeItem('bomberman_currentNickname');
+            // Potentially re-render lobby or show error
+            startLobby(); // This will re-render lobby without prefilled/restored session
+        }
+    }).catch(error => {
+        console.error("Error joining game:", error);
+        localStorage.removeItem('bomberman_currentPlayerID');
+        localStorage.removeItem('bomberman_currentNickname');
+        startLobby();
     });
     
-    return true;
+    return true; // Indicates an attempt to join was made
 }
 
 // Function to manage and display the lobby countdown
@@ -141,28 +176,45 @@ function stopAndClearLobbyCountdown() {
 
 function startLobby() {
     inGame = false;
-    stopAndClearLobbyCountdown(); // Clear countdown when going to lobby
-    // gameInProgress should be false when explicitly starting lobby,
-    // unless server immediately sends a state that indicates otherwise.
-    // The server is the source of truth for gameInProgress.
-    // We can set it to false here, and then a gameState message will update it.
-    // However, if a game just ended, and we go back to lobby, it might still be "in progress" for new joiners
-    // until the server fully resets. The server's AddPlayer logic is key.
-    // For now, let's assume a fresh lobby means gameInProgress is false initially.
-    // If the server immediately sends a "game in progress" state, it will be updated.
-    // The most robust way is to fetch initial game status or wait for first gameState message.
-    // For simplicity, we'll keep it as is, and rely on server messages to update gameInProgress.
-    // The `gameInProgress` variable at the top of index.js will retain its value from previous state
-    // until a new message updates it or `handlePlayAgain` resets it.
-    // Let's ensure `handlePlayAgain` correctly sets it to false.
+    stopAndClearLobbyCountdown(); 
+    // gameInProgress will be determined by server state or restored session.
+    // Initialize to false, but allow restoration to override.
+    gameInProgress = false; 
 
     stopGameLoop();
     window.removeEventListener('keydown', onKeyDown, false);
     window.removeEventListener('keyup', onKeyUp, false);
 
-    console.log('[startLobby] Called. gameInProgress is:', gameInProgress, 'inGame is:', inGame); // Add this line for diagnostics
+    removeStatsBar(); 
+    const gameEndOverlay = document.getElementById('game-end-overlay');
+    if (gameEndOverlay) gameEndOverlay.remove();
+    const deathOverlay = document.getElementById('death-overlay'); 
+    if (deathOverlay) deathOverlay.remove();
+    
+    let initialNicknameForLobby = '';
+    const storedPlayerID = localStorage.getItem('bomberman_currentPlayerID');
+    const storedNickname = localStorage.getItem('bomberman_currentNickname');
+
+    if (storedPlayerID && storedNickname) {
+        console.log(`Attempting to restore session for ${storedNickname} (${storedPlayerID})`);
+        currentPlayerID = storedPlayerID;
+        currentNickname = storedNickname;
+        initialNicknameForLobby = currentNickname;
+
+        // Attempt to re-establish WebSocket connection using stored details.
+        // The server needs to handle this 'join' message appropriately,
+        // potentially re-associating the WebSocket with an existing player session.
+        connectWebSocket(currentNickname, currentPlayerID, handleWSMessage);
+        // UI updates (like disabling nickname input or showing "Waiting for server...")
+        // should ideally occur after a successful 'join_ack' or based on incoming game state.
+        // For now, the lobby will render with the prefilled nickname.
+        // If the server confirms the game is in progress, gameInProgress will be updated via gameState.
+    }
+    
+    console.log('[startLobby] Called. gameInProgress is:', gameInProgress, 'inGame is:', inGame, 'Initial Nickname:', initialNicknameForLobby);
 
     renderLobby(root, {
+        initialNickname: initialNicknameForLobby, // Pass the restored nickname
         onJoin: connectPlayer,
         onSendChat: (msg) => {
             if (!isJoined()) return;
@@ -174,7 +226,7 @@ function startLobby() {
                 }));
             }
         },
-        gameInProgress
+        gameInProgress // Pass current gameInProgress state
     });
 }
 
@@ -201,27 +253,27 @@ function requestGameRestart() {
 function handleWSMessage(data) {
     if (data.type === 'player_count') {
         updatePlayerCount(data.count);
-        // If lobby countdown is active, update it.
-        // This part might be redundant if gameState also sends lobbyJoinEndTime
-        // However, player_count might be sent more frequently or independently.
-        if (data.lobbyJoinEndTime && data.lobbyJoinEndTime > 0) {
-            // Check if we are in lobby state before starting/updating countdown
-            if (gameState && gameState.state && gameState.state.state === 0) { // GameWaiting
-                 startLobbyCountdown(data.lobbyJoinEndTime);
-            } else {
-                // If not in lobby state, but receive this, clear any stray countdown
-                stopAndClearLobbyCountdown();
-            }
-        } else if (gameState && gameState.state && gameState.state.state !== 0) { // Not GameWaiting
-            // If we get a player_count without an end time, and we're not in lobby, clear countdown.
-            stopAndClearLobbyCountdown();
-        }
-    } else if (data.type === 'chat') {
+    } else if (data.type === 'chat_message' || data.type === 'chat') { // Handle both potential chat message types
         let payload = data.payload;
+        // Ensure payload is an object, attempting to parse if it's a string
         if (typeof payload === 'string') {
-            try { payload = JSON.parse(payload); } catch (e) { payload = {}; }
+            try {
+                payload = JSON.parse(payload);
+            } catch (e) {
+                console.error("Failed to parse chat payload:", payload, e);
+                payload = { message: "Error: Malformed chat message received" }; // Fallback
+            }
         }
-        if (payload && payload.message) appendChatMessage(payload);
+        // Ensure the payload has the necessary properties before appending
+        if (payload && typeof payload.message === 'string') {
+            appendChatMessage({
+                playerName: payload.playerName || payload.nickname, // Use playerName or nickname
+                message: payload.message,
+                playerNumber: payload.playerNumber
+            });
+        } else {
+            console.warn("Received chat message with invalid payload:", data);
+        }
     } else if (data.type === 'gameState') {
         // Update gameInProgress based on the detailed game state from the server
         if (data.state) {
@@ -230,6 +282,29 @@ function handleWSMessage(data) {
 
             if (currentServerState === 0) { // GameWaiting
                 gameInProgress = false; 
+                // If the lobby is already displayed, re-render it with updated info
+                // This ensures player count, status, and gameInProgress flag are current.
+                const lobbyContainer = document.getElementById('lobby-container');
+                if (lobbyContainer && lobbyContainer.parentElement === root) {
+                    if (data.state.players) { // Update player count if available
+                        updatePlayerCount(data.state.players.length);
+                    }
+                    renderLobby(root, {
+                        initialNickname: currentNickname || '', // Pass the current nickname
+                        onJoin: connectPlayer,
+                        onSendChat: (msg) => {
+                            if (!isJoined()) return;
+                            if (socket && socket.readyState === WebSocket.OPEN) {
+                                socket.send(JSON.stringify({
+                                    type: 'chat',
+                                    playerId: currentPlayerID,
+                                    payload: { message: msg }
+                                }));
+                            }
+                        },
+                        gameInProgress // Pass the updated gameInProgress
+                    });
+                }
             } else if (currentServerState === 1 || currentServerState === 2 || currentServerState === 3 || currentServerState === 4) {
                 // Countdown, Running, Finished or Resetting
                 gameInProgress = true;
@@ -247,6 +322,7 @@ function handleWSMessage(data) {
             const lobbyContainer = document.getElementById('lobby-container');
             if (lobbyContainer && lobbyContainer.parentElement === root) { // Check if lobby is still the current view
                  renderLobby(root, {
+                    initialNickname: currentNickname || '', // Pass the current nickname
                     onJoin: connectPlayer,
                     onSendChat: (msg) => {
                         if (!isJoined()) return;
@@ -296,32 +372,19 @@ function handleWSMessage(data) {
 function handleGameStateUpdate(newState) {
     console.log("Game state update:", newState);
     // Update gameInProgress based on the new state
-    const oldState = gameState?.state?.state; // Store previous state before updating gameState
-    const currentServerState = newState?.state?.state;
+    const oldState = gameState?.state?.state;    const currentServerState = newState?.state?.state;
 
     if (newState?.state) {
-        // const currentServerState = newState.state.state; // 0: Waiting, 1: Countdown, 2: Running, 3: Finished, 4: Resetting // Already defined
-        if (currentServerState === 1 || currentServerState === 2 ) { // Countdown or Running
+        // Determine gameInProgress based on server state
+        if (currentServerState === 0) { // GameWaiting
+            gameInProgress = false;
+        } else if (currentServerState >= 1 && currentServerState <= 4) { // Countdown, Running, Finished, Resetting
             gameInProgress = true;
-            stopAndClearLobbyCountdown(); // Stop lobby countdown if game starts
-        } else if (currentServerState === 0 ) { // GameWaiting
-            gameInProgress = false; 
-        } else if (currentServerState === 3 || currentServerState === 4) { // Finished or Resetting
-            gameInProgress = true; // Still considered "in progress" until fully back to lobby
-            stopAndClearLobbyCountdown(); // Stop lobby countdown if game ends/resets
-        }
-
-        // Update lobby countdown if present in game state (e.g. initial join or ongoing lobby)
-        if (currentServerState === 0 && newState.state.lobbyJoinEndTime && newState.state.lobbyJoinEndTime > 0) {
-            console.log("Received lobbyJoinEndTime from server in gameStateUpdate:", newState.state.lobbyJoinEndTime);
-            startLobbyCountdown(newState.state.lobbyJoinEndTime);
-        } else if (currentServerState !== 0) {
-            // If not in waiting state, ensure lobby countdown is cleared
-            stopAndClearLobbyCountdown();
         }
     }
     
-    if (!inGame && currentServerState >= 1) { // GameCountdown or later
+    if (!inGame && currentServerState >= 1) { // If client thinks it's not in game, but server says game is active (countdown, running, etc.)
+        // Check if the current player (restored from localStorage or newly joined) is part of this active game
         const playerFromServerState = newState?.state?.map?.players?.find(p => (p.id || p.ID) === currentPlayerID);
         if (currentPlayerID && playerFromServerState) {
             console.log("Current player (" + currentPlayerID + ") is in the game state. Starting game interface: state = " + newState.state.state);
@@ -331,6 +394,7 @@ function handleGameStateUpdate(newState) {
             // Force render lobby if player is not a participant of the active game.
             // The renderLobby function clears the root element.
             renderLobby(root, {
+                initialNickname: currentNickname || '', // Pass the current nickname
                 onJoin: connectPlayer,
                 onSendChat: (msg) => {
                     if (!isJoined()) return;

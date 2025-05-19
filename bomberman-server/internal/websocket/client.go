@@ -109,26 +109,57 @@ func (c *Client) handleMessage(message Message) {
 		}
 		if err := json.Unmarshal(message.Payload, &payload); err != nil {
 			log.Printf("Failed to unmarshal join payload: %v", err)
+			// Send error back to client
+			errorMsg := Message{Type: "join_error", Payload: mustMarshal(map[string]string{"error": "Invalid join payload"})}
+			if data, marshalErr := json.Marshal(errorMsg); marshalErr == nil {
+				c.Send <- data
+			}
 			return
 		}
 
-		c.ID = message.PlayerID
-		c.Nickname = payload.Nickname
-		log.Printf("Registering player: %s (%s)", c.Nickname, c.ID)
-
-		// Always attempt AddPlayer, but still send join_ack even if it fails
-		log.Printf("Join message acknowledged for %s (%s)", c.Nickname, c.ID)
-
-		ack := Message{
-			Type: "join_ack",
-			Payload: mustMarshal(map[string]string{
-				"nickname": c.Nickname,
-				"playerId": c.ID,
-			}),
-		}
-		data, err := json.Marshal(ack)
+		// Attempt to add or rejoin the player in the game logic.
+		player, err := c.Hub.game.AddPlayer(message.PlayerID, payload.Nickname)
 		if err != nil {
-			log.Printf("Failed to marshal join_ack: %v", err)
+			log.Printf("Error adding/rejoining player %s (%s) to game: %v", payload.Nickname, message.PlayerID, err.Error())
+			// Send join_error message to client
+			errorDetails := map[string]string{
+				"error":    err.Error(),
+				"nickname": payload.Nickname,
+				"playerId": message.PlayerID,
+			}
+			errorMsg := Message{
+				Type:    "join_error",
+				Payload: mustMarshal(errorDetails),
+			}
+			if data, marshalErr := json.Marshal(errorMsg); marshalErr == nil {
+				c.Send <- data
+			}
+			// Do not proceed to set client ID/Nickname or send join_ack if AddPlayer failed
+			return
+		}
+
+		// If AddPlayer was successful, 'player' is the authoritative player object.
+		// Update the client struct's ID and Nickname.
+		c.mu.Lock()
+		c.ID = player.ID
+		c.Nickname = player.Nickname
+		c.mu.Unlock()
+		
+		log.Printf("Player %s (%s) successfully processed by Hub for join/rejoin. Client ID/Nickname updated.", c.Nickname, c.ID)
+
+		// Send join_ack
+		ackPayload := map[string]string{
+			"nickname": c.Nickname, // Use the nickname now set on the client struct
+			"playerId": c.ID,       // Use the ID now set on the client struct
+		}
+		ack := Message{
+			Type:    "join_ack",
+			Payload: mustMarshal(ackPayload),
+		}
+		data, marshalErr := json.Marshal(ack)
+		if marshalErr != nil {
+			log.Printf("Failed to marshal join_ack: %v", marshalErr)
+			// Consider how to handle this critical error; maybe close connection or log extensively.
 			return
 		}
 

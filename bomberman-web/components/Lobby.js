@@ -1,15 +1,25 @@
 // Lobby UI using mini-framework
-let nickname = '';
+let nickname = ''; // This will be set by initialNickname or input
 let playerCount = 1;
 let lobbyCountdownInterval = null; // Keep track of the interval
 
-function renderLobby(root, { onJoin, onSendChat, gameInProgress }) {
+function renderLobby(root, { initialNickname, onJoin, onSendChat, gameInProgress }) { // Added initialNickname
+    // If an initialNickname is provided (e.g., from localStorage via index.js), use it.
+    // This updates the module-scoped `nickname` which is then used in the template value.
+    if (initialNickname) {
+        nickname = initialNickname;
+    } else {
+        // If no initial nickname (e.g. first visit, or localStorage was cleared), ensure module `nickname` is empty
+        // so the input field doesn't show a stale value from a previous renderLobby call within the same session.
+        nickname = '';
+    }
+
     root.innerHTML = '';
     const lobbyEl = document.createElement('div');
     lobbyEl.className = 'lobby-container';
     lobbyEl.innerHTML = `
         <h2>Bomberman Lobby</h2>
-        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" autofocus /></label>
+        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" autofocus autocomplete="off" /></label>
         <button id="join-btn" ${gameInProgress ? 'disabled' : ''}>Join Game</button>
         <div id="player-count">Players: ${playerCount}/4</div>
         <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait for the next round.' : 'Ready to join!'}</div>
@@ -19,32 +29,50 @@ function renderLobby(root, { onJoin, onSendChat, gameInProgress }) {
         <button id="chat-send" disabled>Send</button>
     `;
     root.appendChild(lobbyEl);
-    document.getElementById('join-btn').onclick = () => {
-        nickname = document.getElementById('nickname-input').value.trim();
-        if (nickname) {
-            onJoin(nickname);
-            document.getElementById('lobby-status').textContent = "Waiting for other players...";
-            document.getElementById('join-btn').disabled = true;
-            document.getElementById('nickname-input').disabled = true;
-            document.getElementById('chat-input').disabled = false;
-            document.getElementById('chat-send').disabled = false;
+
+    const nicknameInputEl = document.getElementById('nickname-input');
+    const joinButtonEl = document.getElementById('join-btn');
+    const lobbyStatusEl = document.getElementById('lobby-status');
+    const chatInputEl = document.getElementById('chat-input');
+    const chatSendEl = document.getElementById('chat-send');
+
+    // If a nickname was restored and used, and we are trying to join (e.g. after refresh),
+    // potentially disable input/button until server confirms state.
+    // This logic might be better handled based on `isJoined()` status or server messages.
+    if (nickname && gameInProgress) { // If prefilled and game is marked in progress
+        nicknameInputEl.disabled = true;
+        // joinButtonEl.disabled = true; // Join button already handles gameInProgress
+        // lobbyStatusEl.textContent = "Attempting to rejoin...";
+    }
+
+
+    joinButtonEl.onclick = () => {
+        const currentInputNickname = nicknameInputEl.value.trim();
+        if (currentInputNickname) {
+            nickname = currentInputNickname; // Update module-scoped nickname
+            onJoin(nickname); // onJoin in index.js will handle localStorage
+            lobbyStatusEl.textContent = "Waiting for other players...";
+            joinButtonEl.disabled = true;
+            nicknameInputEl.disabled = true;
+            chatInputEl.disabled = false;
+            chatSendEl.disabled = false;
         }
     };
-    document.getElementById('nickname-input').addEventListener('keydown', (e) => {
+    nicknameInputEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             document.getElementById('join-btn').click();
         }
     });
-    document.getElementById('chat-send').onclick = () => {
-        const msg = document.getElementById('chat-input').value.trim();
+    chatSendEl.onclick = () => {
+        const msg = chatInputEl.value.trim();
         if (msg) {
             onSendChat(msg);
-            document.getElementById('chat-input').value = '';
+            chatInputEl.value = '';
         }
     };
-    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+    chatInputEl.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-            document.getElementById('chat-send').click();
+            chatSendEl.click();
         }
     });
 }

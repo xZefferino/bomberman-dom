@@ -393,3 +393,29 @@ func (g *Game) PlayersInSlotOrder() []*Player {
 	}
 	return ordered
 }
+
+// HandlePlayerDisconnect is called when a player's websocket connection is closed.
+func (g *Game) HandlePlayerDisconnect(playerID string) {
+	g.Mutex.Lock()
+	defer g.Mutex.Unlock()
+
+	player, ok := g.Players[playerID]
+	if !ok {
+		log.Printf("Player %s not found for disconnect handling.", playerID)
+		return
+	}
+
+	// Mark the player as having 0 lives or remove them.
+	// For simplicity, setting lives to 0 is often sufficient.
+	if player.Lives > 0 {
+		player.Lives = 0
+		log.Printf("Player %s (%s) marked as dead due to disconnect.", player.Nickname, playerID)
+		// If you have specific logic for when a player dies (e.g., spawning power-ups, checking for game over),
+		// you might want to trigger parts of that here, or ensure your Update() method handles it.
+	}
+
+	// Depending on your game rules, you might also remove the player from g.Players map
+	// or move them to a list of disconnected players.
+	// For now, just setting lives to 0 will make them appear dead.
+	// If they were the last one alive, the game end logic should trigger naturally in Update().
+}

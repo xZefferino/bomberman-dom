@@ -76,9 +76,23 @@ func (h *Hub) Run() {
 				if client.ID != "" {
 					log.Printf("Player %s disconnected", client.ID)
 					// TODO: Handle player disconnect in the game
+					// Add this line:
+					h.game.HandlePlayerDisconnect(client.ID) // Notify the game logic
 				}
 			}
 			h.mutex.Unlock()
+
+			// Broadcast updated player count after unregistration
+			h.mutex.RLock()
+			count := len(h.clients)
+			h.mutex.RUnlock()
+			playerCountMsg, _ := json.Marshal(map[string]interface{}{
+				"type":  "player_count",
+				"count": count,
+				// Optionally, you can also send the lobbyJoinEndTime if relevant
+				// "lobbyJoinEndTime": h.game.WaitingTimer.UnixMilli(),
+			})
+			h.broadcastMessage(playerCountMsg)
 
 		case message := <-h.Broadcast:
 			h.broadcastMessage(message)

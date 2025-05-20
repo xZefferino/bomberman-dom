@@ -11,8 +11,10 @@ function renderLobby(root, { initialNickname, onSendChat, gameInProgress }) { //
     lobbyEl.className = 'lobby-container';
     lobbyEl.innerHTML = `
         <h2>Bomberman Lobby</h2>
-        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" disabled autocomplete="off" /></label>
-        <!-- Join Game button removed as player is already "joined" by being here -->
+        <div style="display: inline-block; margin-bottom: 10px; text-align: left;"> <!-- Added text-align: left here -->
+            <label style="display: inline; margin-right: 5px; color: #bbb; font-size: 1em;">Nickname:</label> <!-- Added display: inline; -->
+            <span id="nickname-display" style="font-weight: bold; color: #e0e0e0; font-size: 1em;">${nickname}</span>
+        </div>
         <div id="player-count">Players: ${playerCount}/4</div>
         <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait...' : 'Connected to lobby. Waiting for players...'}</div>
         <div id="lobby-countdown" style="margin-top: 10px; font-weight: bold;"></div>
@@ -26,7 +28,7 @@ function renderLobby(root, { initialNickname, onSendChat, gameInProgress }) { //
     const chatInputEl = document.getElementById('chat-input');
     const chatSendEl = document.getElementById('chat-send');
 
-    // Removed event listeners and logic for nicknameInputEl (it's disabled) and joinButtonEl (it's removed)
+    // Removed event listeners and logic for nicknameInputEl (it's removed) and joinButtonEl (it's removed)
 
     chatSendEl.onclick = () => {
         const msg = chatInputEl.value.trim();

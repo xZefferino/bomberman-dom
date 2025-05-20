@@ -33,7 +33,7 @@ let lastMoveDirection = null;
 let lastMoveSent = 0;
 const MOVE_REPEAT_INTERVAL = 60; // ms, lower = smoother
 const MOVE_DEBOUNCE = 80; // ms, minimum time between move actions
-const BOMB_DEBOUNCE = 200; // ms, minimum time between bomb drops
+const BOMB_DEBOUNCE = 600; // ms, minimum time between bomb drops
 let lastBombTime = 0;
 
 let localPlayerFrame = 0;

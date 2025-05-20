@@ -15,8 +15,11 @@ const FRAME_INTERVAL = 35;
 const SPRITE_FRAMES = 9; // Number of frames for player animation
 
 const root = document.getElementById('app');
-let currentNickname = '';
-let currentPlayerID = '';
+
+// Global variables - these will be populated by the logic below
+let currentPlayerID = null;
+let currentNickname = null;
+
 let gameState = null;
 let inGame = false;
 
@@ -177,8 +180,6 @@ function stopAndClearLobbyCountdown() {
 function startLobby() {
     inGame = false;
     stopAndClearLobbyCountdown(); 
-    // gameInProgress will be determined by server state or restored session.
-    // Initialize to false, but allow restoration to override.
     gameInProgress = false; 
 
     stopGameLoop();
@@ -190,34 +191,39 @@ function startLobby() {
     if (gameEndOverlay) gameEndOverlay.remove();
     const deathOverlay = document.getElementById('death-overlay'); 
     if (deathOverlay) deathOverlay.remove();
-    
-    let initialNicknameForLobby = '';
-    const storedPlayerID = localStorage.getItem('bomberman_currentPlayerID');
-    const storedNickname = localStorage.getItem('bomberman_currentNickname');
 
-    if (storedPlayerID && storedNickname) {
-        console.log(`Attempting to restore session for ${storedNickname} (${storedPlayerID})`);
-        currentPlayerID = storedPlayerID;
-        currentNickname = storedNickname;
-        initialNicknameForLobby = currentNickname;
-
-        // Attempt to re-establish WebSocket connection using stored details.
-        // The server needs to handle this 'join' message appropriately,
-        // potentially re-associating the WebSocket with an existing player session.
+    // currentPlayerID and currentNickname are already populated from localStorage by initializeApp
+    if (currentPlayerID && currentNickname) {
+        console.log(`Session active for ${currentNickname} (${currentPlayerID}). Connecting to WebSocket.`);
         connectWebSocket(currentNickname, currentPlayerID, handleWSMessage);
-        // UI updates (like disabling nickname input or showing "Waiting for server...")
-        // should ideally occur after a successful 'join_ack' or based on incoming game state.
-        // For now, the lobby will render with the prefilled nickname.
-        // If the server confirms the game is in progress, gameInProgress will be updated via gameState.
+    } else {
+        // This should not be reached if initializeApp's redirection logic is correct.
+        console.error("CRITICAL: startLobby called on index.html without player ID. Redirection should have occurred.");
+        // As a safety, redirect if not already on register page (though this indicates a flow issue)
+        if (!window.location.pathname.includes('register.html')) {
+            window.location.href = 'register.html';
+        }
+        return; 
     }
     
-    console.log('[startLobby] Called. gameInProgress is:', gameInProgress, 'inGame is:', inGame, 'Initial Nickname:', initialNicknameForLobby);
+    console.log('[startLobby] Rendering lobby. gameInProgress is:', gameInProgress, 'inGame is:', inGame, 'Initial Nickname:', currentNickname);
 
     renderLobby(root, {
-        initialNickname: initialNicknameForLobby, // Pass the restored nickname
-        onJoin: connectPlayer,
+        initialNickname: currentNickname, // Pass the restored/current nickname
+        onJoin: (nickFromInput) => {
+            // This button should be disabled if initialNickname is present (i.e., player is registered).
+            // If it's somehow clicked, it implies an old flow or an attempt to re-join with a new name,
+            // which current server logic might treat as a new player.
+            console.warn(`Lobby 'Join Game' button clicked with nickname: ${nickFromInput}. This button should ideally be disabled if already registered.`);
+            // For now, let it call connectPlayer, which might attempt a new join.
+            // This could be refined based on desired behavior for "changing nickname" or "re-joining".
+            connectPlayer(nickFromInput);
+        },
         onSendChat: (msg) => {
-            if (!isJoined()) return;
+            if (!isJoined()) {
+                console.warn("Attempted to send chat message before WebSocket connection was fully established as joined.");
+                return;
+            }
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'chat',
@@ -226,7 +232,7 @@ function startLobby() {
                 }));
             }
         },
-        gameInProgress // Pass current gameInProgress state
+        gameInProgress // Pass current gameInProgress state (from server updates)
     });
 }
 
@@ -660,8 +666,42 @@ function sendAction(action) {
     }));
 }
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startLobby);
-} else {
+// Ensure this main logic runs after the script is parsed, preferably on DOMContentLoaded
+function initializeApp() {
+    currentPlayerID = localStorage.getItem('bomberman_currentPlayerID');
+    currentNickname = localStorage.getItem('bomberman_currentNickname');
+
+    const onRegisterPage = window.location.pathname.endsWith('register.html');
+
+    if (!currentPlayerID && !onRegisterPage) {
+        // No player ID and not on registration page, redirect to register
+        window.location.href = 'register.html';
+        return; // Stop further execution of index.js for this path
+    }
+
+    if (onRegisterPage) {
+        // If somehow index.js is loaded on register.html, do nothing here.
+        // register.js handles that page.
+        return;
+    }
+
+    // If we reach here, it means we are on index.html and should have a currentPlayerID
+    // (or this is an unexpected state if ID is missing).
+    if (!currentPlayerID) {
+        // This case should ideally not be hit if the redirect above works.
+        // As a fallback, redirect again.
+        console.warn("PlayerID missing on index.html, redirecting to register.html as a fallback.");
+        window.location.href = 'register.html';
+        return;
+    }
+    
+    // Proceed with lobby/game initialization on index.html
     startLobby();
+    // ... any other initializations for index.html ...
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+    initializeApp();
 }

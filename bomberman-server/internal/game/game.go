@@ -90,7 +90,7 @@ func (g *Game) AddPlayer(id, nickname string) (*Player, error) {
 
 	// Prevent joining if game is in countdown, running, or finished
 	if g.State == GameCountdown || g.State == GameRunning || g.State == GameFinished {
-		return nil, errors.New("game has already started or is finished")
+		return nil, errors.New("Please wait game in progress...")
 	}
 
 	// Prevent joining if lobby is full

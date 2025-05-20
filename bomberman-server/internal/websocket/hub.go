@@ -164,34 +164,51 @@ func (h *Hub) SendGameState() {
 	h.broadcastMessage(message)
 }
 
-// Add this helper to get player number by ID
-func (h *Hub) GetPlayerNumber(playerID string) int {
-	h.game.Mutex.RLock()
-	defer h.game.Mutex.RUnlock()
-	i := 1
-	for id := range h.game.Players {
-		if id == playerID {
-			return i
-		}
-		i++
-	}
-	return 0 // not found
-}
-
-// SendChatMessage sends a chat message from one player to all clients
-func (h *Hub) SendChatMessage(playerID, playerName, message string) {
-	if playerName == "" {
-		// Try to get from game state
-		h.game.Mutex.RLock()
-		if player, ok := h.game.Players[playerID]; ok {
-			playerName = player.Nickname
-		}
-		h.game.Mutex.RUnlock()
-	}
+// BroadcastPlayerJoined sends a message to all clients that a player has joined.
+func (h *Hub) BroadcastPlayerJoined(playerID, playerName string, playerNumber int) {
+	log.Printf("Broadcasting player join: %s (ID: %s, Number: %d)", playerName, playerID, playerNumber)
 	payload := map[string]interface{}{
 		"playerId":     playerID,
 		"playerName":   playerName,
-		"playerNumber": h.GetPlayerNumber(playerID),
+		"playerNumber": playerNumber, // Send the assigned player number
+	}
+	msg := Message{
+		Type:    "player_joined_lobby",
+		Payload: mustMarshal(payload),
+	}
+	data, _ := json.Marshal(msg)
+	h.broadcastMessage(data) // This sends to all clients in h.clients
+}
+
+// SendChatMessage sends a chat message from one player to all clients
+// It now uses the authoritative player details from the game state.
+func (h *Hub) SendChatMessage(playerID, clientProvidedNickname, message string) {
+	var authoritativeNickname string
+	var authoritativePlayerNumber int
+	foundInGame := false
+
+	h.game.Mutex.RLock()
+	if p, ok := h.game.Players[playerID]; ok {
+		authoritativeNickname = p.Nickname // Use nickname from game state
+		authoritativePlayerNumber = p.Number   // Use number from game state
+		foundInGame = true
+	}
+	h.game.Mutex.RUnlock()
+
+	if !foundInGame {
+		// This case should be rare if the playerID is valid and player is in game
+		log.Printf("Warning: Player %s not found in game.Players for chat. Using client-provided nickname: %s", playerID, clientProvidedNickname)
+		authoritativeNickname = clientProvidedNickname
+		if authoritativeNickname == "" {
+			authoritativeNickname = "Unknown"
+		}
+		// authoritativePlayerNumber will remain 0 or you can assign a specific value for "unknown"
+	}
+
+	payload := map[string]interface{}{
+		"playerId":     playerID,
+		"playerName":   authoritativeNickname,
+		"playerNumber": authoritativePlayerNumber,
 		"message":      message,
 	}
 	msg := Message{

@@ -1,77 +1,42 @@
 // Lobby UI using mini-framework
-let nickname = ''; // This will be set by initialNickname or input
+let nickname = ''; // This will be set by initialNickname
 let playerCount = 1;
-let lobbyCountdownInterval = null; // Keep track of the interval
 
-function renderLobby(root, { initialNickname, onJoin, onSendChat, gameInProgress }) { // Added initialNickname
-    // If an initialNickname is provided (e.g., from localStorage via index.js), use it.
-    // This updates the module-scoped `nickname` which is then used in the template value.
-    if (initialNickname) {
-        nickname = initialNickname;
-    } else {
-        // If no initial nickname (e.g. first visit, or localStorage was cleared), ensure module `nickname` is empty
-        // so the input field doesn't show a stale value from a previous renderLobby call within the same session.
-        nickname = '';
-    }
+function renderLobby(root, { initialNickname, onSendChat, gameInProgress }) { // Removed onJoin
+    // initialNickname is expected to be set (from localStorage via index.js)
+    nickname = initialNickname || 'Player'; // Use provided nickname, fallback if somehow empty
 
-    root.innerHTML = '';
+    root.innerHTML = ''; // Clear previous content
     const lobbyEl = document.createElement('div');
     lobbyEl.className = 'lobby-container';
     lobbyEl.innerHTML = `
         <h2>Bomberman Lobby</h2>
-        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" autofocus autocomplete="off" /></label>
-        <button id="join-btn" ${gameInProgress ? 'disabled' : ''}>Join Game</button>
+        <label>Nickname: <input id="nickname-input" type="text" maxlength="12" value="${nickname}" disabled autocomplete="off" /></label>
+        <!-- Join Game button removed as player is already "joined" by being here -->
         <div id="player-count">Players: ${playerCount}/4</div>
-        <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait for the next round.' : 'Ready to join!'}</div>
-        <div id="lobby-countdown" style="margin-top: 10px; font-weight: bold;"></div> <!-- New element for countdown -->
+        <div id="lobby-status">${gameInProgress ? 'Game in progress. Please wait...' : 'Connected to lobby. Waiting for players...'}</div>
+        <div id="lobby-countdown" style="margin-top: 10px; font-weight: bold;"></div>
         <div id="chat-area" style="margin-top:16px;max-height:120px;overflow-y:auto;background:#222;padding:8px;border-radius:4px;"></div>
-        <input id="chat-input" type="text" placeholder="Type a message..." style="width:70%;" disabled />
-        <button id="chat-send" disabled>Send</button>
+        <input id="chat-input" type="text" placeholder="Type a message..." style="width:70%;" /> <!-- Enabled by default -->
+        <button id="chat-send">Send</button> <!-- Enabled by default -->
     `;
     root.appendChild(lobbyEl);
 
-    const nicknameInputEl = document.getElementById('nickname-input');
-    const joinButtonEl = document.getElementById('join-btn');
-    const lobbyStatusEl = document.getElementById('lobby-status');
+    // Elements are still needed for chat
     const chatInputEl = document.getElementById('chat-input');
     const chatSendEl = document.getElementById('chat-send');
 
-    // If a nickname was restored and used, and we are trying to join (e.g. after refresh),
-    // potentially disable input/button until server confirms state.
-    // This logic might be better handled based on `isJoined()` status or server messages.
-    if (nickname && gameInProgress) { // If prefilled and game is marked in progress
-        nicknameInputEl.disabled = true;
-        // joinButtonEl.disabled = true; // Join button already handles gameInProgress
-        // lobbyStatusEl.textContent = "Attempting to rejoin...";
-    }
+    // Removed event listeners and logic for nicknameInputEl (it's disabled) and joinButtonEl (it's removed)
 
-
-    joinButtonEl.onclick = () => {
-        const currentInputNickname = nicknameInputEl.value.trim();
-        if (currentInputNickname) {
-            nickname = currentInputNickname; // Update module-scoped nickname
-            onJoin(nickname); // onJoin in index.js will handle localStorage
-            lobbyStatusEl.textContent = "Waiting for other players...";
-            joinButtonEl.disabled = true;
-            nicknameInputEl.disabled = true;
-            chatInputEl.disabled = false;
-            chatSendEl.disabled = false;
-        }
-    };
-    nicknameInputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            document.getElementById('join-btn').click();
-        }
-    });
     chatSendEl.onclick = () => {
         const msg = chatInputEl.value.trim();
         if (msg) {
-            onSendChat(msg);
+            onSendChat(msg); // onSendChat in index.js will handle WebSocket state
             chatInputEl.value = '';
         }
     };
     chatInputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !chatSendEl.disabled) { // Check if button is not disabled
             chatSendEl.click();
         }
     });
@@ -83,19 +48,25 @@ function updatePlayerCount(count) {
     if (el) el.textContent = `Players: ${playerCount}/4`;
 }
 
-function appendChatMessage({ playerName, message, playerNumber }) {
+// Modified to handle system messages (like player join announcements)
+function appendChatMessage({ playerName, message, playerNumber, isSystem = false }) {
     const chatArea = document.getElementById('chat-area');
     if (chatArea) {
         const div = document.createElement('div');
-        let prefix = playerNumber ? `Player ${playerNumber} ` : '';
-        let name = playerName || 'Unknown';
-        div.textContent = `${prefix}${name}: ${message}`;
+        if (isSystem) {
+            div.textContent = message;
+            div.style.fontStyle = 'italic';
+            div.style.color = '#aaa'; // Light grey for system messages
+        } else {
+            let prefix = playerNumber ? `Player ${playerNumber} ` : '';
+            let name = playerName || 'Unknown';
+            div.textContent = `${prefix}${name}: ${message}`;
+        }
         chatArea.appendChild(div);
-        chatArea.scrollTop = chatArea.scrollHeight;
+        chatArea.scrollTop = chatArea.scrollHeight; // Auto-scroll to the latest message
     }
 }
 
-// New function to update lobby countdown display
 function updateLobbyCountdownDisplay(remainingSeconds) {
     const countdownEl = document.getElementById('lobby-countdown');
     if (countdownEl) {
@@ -107,16 +78,13 @@ function updateLobbyCountdownDisplay(remainingSeconds) {
     }
 }
 
-// New function to clear the lobby countdown display and interval
+// Clears only the text content, interval is managed by index.js
 function clearLobbyCountdown() {
-    if (lobbyCountdownInterval) {
-        clearInterval(lobbyCountdownInterval);
-        lobbyCountdownInterval = null;
-    }
     const countdownEl = document.getElementById('lobby-countdown');
     if (countdownEl) {
         countdownEl.textContent = '';
     }
 }
 
-export { renderLobby, updatePlayerCount, appendChatMessage, updateLobbyCountdownDisplay, clearLobbyCountdown, lobbyCountdownInterval };
+// Removed lobbyCountdownInterval from export
+export { renderLobby, updatePlayerCount, appendChatMessage, updateLobbyCountdownDisplay, clearLobbyCountdown };

@@ -186,42 +186,24 @@ function startLobby() {
     window.removeEventListener('keydown', onKeyDown, false);
     window.removeEventListener('keyup', onKeyUp, false);
 
-    removeStatsBar(); 
-    const gameEndOverlay = document.getElementById('game-end-overlay');
-    if (gameEndOverlay) gameEndOverlay.remove();
-    const deathOverlay = document.getElementById('death-overlay'); 
-    if (deathOverlay) deathOverlay.remove();
-
     // currentPlayerID and currentNickname are already populated from localStorage by initializeApp
     if (currentPlayerID && currentNickname) {
-        console.log(`Session active for ${currentNickname} (${currentPlayerID}). Connecting to WebSocket.`);
+        console.log(`[startLobby] Session active for ${currentNickname} (${currentPlayerID}). Connecting to WebSocket.`);
         connectWebSocket(currentNickname, currentPlayerID, handleWSMessage);
     } else {
-        // This should not be reached if initializeApp's redirection logic is correct.
-        console.error("CRITICAL: startLobby called on index.html without player ID. Redirection should have occurred.");
-        // As a safety, redirect if not already on register page (though this indicates a flow issue)
-        if (!window.location.pathname.includes('register.html')) {
-            window.location.href = 'register.html';
-        }
-        return; 
+        console.error("[startLobby] CRITICAL: No playerID or nickname. Redirecting to register.");
+        window.location.href = 'register.html';
+        return;
     }
     
     console.log('[startLobby] Rendering lobby. gameInProgress is:', gameInProgress, 'inGame is:', inGame, 'Initial Nickname:', currentNickname);
 
     renderLobby(root, {
         initialNickname: currentNickname, // Pass the restored/current nickname
-        onJoin: (nickFromInput) => {
-            // This button should be disabled if initialNickname is present (i.e., player is registered).
-            // If it's somehow clicked, it implies an old flow or an attempt to re-join with a new name,
-            // which current server logic might treat as a new player.
-            console.warn(`Lobby 'Join Game' button clicked with nickname: ${nickFromInput}. This button should ideally be disabled if already registered.`);
-            // For now, let it call connectPlayer, which might attempt a new join.
-            // This could be refined based on desired behavior for "changing nickname" or "re-joining".
-            connectPlayer(nickFromInput);
-        },
         onSendChat: (msg) => {
-            if (!isJoined()) {
+            if (!isJoined()) { // isJoined() is from ws.js
                 console.warn("Attempted to send chat message before WebSocket connection was fully established as joined.");
+                appendChatMessage({ message: "You are not connected to chat yet. Please wait.", isSystem: true });
                 return;
             }
             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -297,7 +279,6 @@ function handleWSMessage(data) {
                     }
                     renderLobby(root, {
                         initialNickname: currentNickname || '', // Pass the current nickname
-                        onJoin: connectPlayer,
                         onSendChat: (msg) => {
                             if (!isJoined()) return;
                             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -329,7 +310,6 @@ function handleWSMessage(data) {
             if (lobbyContainer && lobbyContainer.parentElement === root) { // Check if lobby is still the current view
                  renderLobby(root, {
                     initialNickname: currentNickname || '', // Pass the current nickname
-                    onJoin: connectPlayer,
                     onSendChat: (msg) => {
                         if (!isJoined()) return;
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -371,7 +351,30 @@ function handleWSMessage(data) {
                 startLobby(); // Render the lobby
             }
         }
+    } else if (data.type === 'player_joined_lobby') {
+        if (data.payload && data.payload.playerName) {
+            // Optional: Avoid announcing to self if server sends to all and you want to suppress it
+            // if (data.payload.playerId === currentPlayerID) return; 
+            appendChatMessage({
+                message: `${data.payload.playerName} has joined the lobby.`,
+                isSystem: true
+            });
+        }
+    } else if (data.type === 'chat') {
+        // ... (existing chat handling)
+        // Ensure it uses the new appendChatMessage signature if you modified it there
+        appendChatMessage({ 
+            playerName: data.payload.playerName, 
+            message: data.payload.message, 
+            playerNumber: data.payload.playerNumber 
+            // isSystem will be false/undefined by default
+        });
+    // ... (other message types) ...
     }
+    // Ensure all other calls to renderLobby in this file are updated:
+    // e.g., in handleGameStateUpdate or error handlers, remove the onJoin property.
+    // Example:
+    // renderLobby(root, { initialNickname: currentNickname || '', onSendChat: (msg) => { /*...*/ }, gameInProgress });
 }
 
 // Update the game state handling function
@@ -401,7 +404,6 @@ function handleGameStateUpdate(newState) {
             // The renderLobby function clears the root element.
             renderLobby(root, {
                 initialNickname: currentNickname || '', // Pass the current nickname
-                onJoin: connectPlayer,
                 onSendChat: (msg) => {
                     if (!isJoined()) return;
                     if (socket && socket.readyState === WebSocket.OPEN) {

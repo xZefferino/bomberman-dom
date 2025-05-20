@@ -23,7 +23,7 @@ type Client struct {
 	Hub      *Hub
 	Conn     *websocket.Conn
 	Send     chan []byte
-	mu       sync.Mutex
+	mu       sync.RWMutex // Changed from sync.Mutex to sync.RWMutex
 }
 
 func (c *Client) ReadMessages() {
@@ -144,38 +144,40 @@ func (c *Client) handleMessage(message Message) {
 		c.ID = player.ID
 		c.Nickname = player.Nickname
 		c.mu.Unlock()
-		
 		log.Printf("Player %s (%s) successfully processed by Hub for join/rejoin. Client ID/Nickname updated.", c.Nickname, c.ID)
 
-		// Send join_ack
+		// Send join_ack to the joining client
 		ackPayload := map[string]string{
-			"nickname": c.Nickname, // Use the nickname now set on the client struct
-			"playerId": c.ID,       // Use the ID now set on the client struct
+			"nickname": c.Nickname,
+			"playerId": c.ID,
 		}
-		ack := Message{
-			Type:    "join_ack",
-			Payload: mustMarshal(ackPayload),
-		}
-		data, marshalErr := json.Marshal(ack)
-		if marshalErr != nil {
+		ack := Message{Type: "join_ack", Payload: mustMarshal(ackPayload)}
+		if data, marshalErr := json.Marshal(ack); marshalErr == nil {
+			log.Printf("✅ Sending join_ack to %s with nickname %s", c.ID, c.Nickname)
+			c.Send <- data
+		} else {
 			log.Printf("Failed to marshal join_ack: %v", marshalErr)
-			// Consider how to handle this critical error; maybe close connection or log extensively.
-			return
+			// Potentially return or handle error more gracefully
 		}
 
-		log.Printf("✅ Sending join_ack to %s with nickname %s", c.ID, c.Nickname)
-		c.Send <- data
+		// Announce player join to all clients via the Hub
+		// player.Number should be correctly assigned by AddPlayer
+		c.Hub.BroadcastPlayerJoined(player.ID, player.Nickname, player.Number)
 
 	case "chat":
-		log.Printf("Received chat message: %s", string(message.Payload))
-		var payload ChatMessage
+		var payload struct {
+			Message string `json:"message"`
+		}
 		if err := json.Unmarshal(message.Payload, &payload); err != nil {
 			log.Printf("Failed to unmarshal chat payload: %v", err)
 			return
 		}
-		log.Printf("Parsed chat payload: %+v", payload)
-		log.Printf("Sending chat from ID=%s name=%s", c.ID, c.Nickname)
-		c.Hub.SendChatMessage(c.ID, c.Nickname, payload.Message)
+		c.mu.RLock() // This will now work
+		clientID := c.ID
+		clientNickname := c.Nickname
+		c.mu.RUnlock() // This will now work
+		// Pass the client's authoritative nickname from the client struct
+		c.Hub.SendChatMessage(clientID, clientNickname, payload.Message)
 
 	case "action":
 		var payload PlayerAction

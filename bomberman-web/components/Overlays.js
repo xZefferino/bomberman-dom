@@ -1,23 +1,31 @@
 // Overlays for death/game over from index.js
 // Shows a message when the player dies
 export function showDeathMessage() {
-    const existingOverlay = document.getElementById('death-overlay');
-    if (existingOverlay) return; // Don't show if already there
-
-    const overlay = document.createElement('div');
-    overlay.id = 'death-overlay';
-    overlay.className = 'game-overlay'; // Use the same class for styling
-    overlay.innerHTML = `
-        <div class="game-overlay-content">
-            <h2>You Died!</h2>
+    let overlay = document.getElementById('death-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'death-overlay';
+        overlay.innerHTML = `
+            <h3>You Died!</h3>
             <p>Waiting for game to end...</p>
-        </div>
-    `;
-    document.body.appendChild(overlay);
+        `;
+        // Append to body to ensure it's not cleared prematurely by root.innerHTML if not intended
+        document.body.appendChild(overlay); 
+    }
+    overlay.style.display = 'block'; // Show it
+}
+
+export function removeDeathMessage() {
+    const overlay = document.getElementById('death-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
 }
 
 // Handles triggering the game restart after a delay
 export function handleGameEnd(winner, onRestart) {
+    removeDeathMessage(); // Remove "You Died!" message first
+
     let gameEndOverlay = document.getElementById('game-end-overlay');
     if (gameEndOverlay) {
         gameEndOverlay.remove(); // Remove existing overlay if any

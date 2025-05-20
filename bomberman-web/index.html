@@ -5,33 +5,192 @@
     <title>Bomberman DOM</title>
     <style>
         body {
-            background: url('./aseets/sprites/background.jpg') no-repeat center center fixed;
+            /* Default body styles - adjust as needed */
+            background: url('./aseets/sprites/background.jpg') no-repeat center center fixed; /* Your existing background */
             background-size: cover;
-            color: #fff;
-            font-family: sans-serif;
+            color: #fff; /* Default text color */
+            font-family: 'Arial', sans-serif; /* Or your preferred game font */
             margin: 0;
-            padding: 0;
-            overflow: hidden;
+            padding: 0; /* Changed from 20px to 0 to allow lobby to center itself better if needed */
+            overflow: hidden; /* Your existing overflow */
+            display: flex; /* Helps in centering content if #app takes full height */
+            justify-content: center;
+            align-items: center; /* Vertically center content like the lobby */
+            min-height: 100vh;
         }
+
+        /* Lobby Specific Styles */
         .lobby-container {
-            margin: 100px auto;
-            width: 300px;
-            background: rgba(51, 51, 51, 0.85);
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px #000a;
+            background-color: rgba(30, 30, 40, 0.9); /* Darker, slightly transparent background */
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            width: 450px; /* Or a max-width if you prefer */
+            /* margin: 40px auto; Removed to allow flexbox on body to center it */
+            color: #e0e0e0; /* Lighter text color for better contrast */
+            border: 1px solid rgba(100, 100, 120, 0.5);
+            text-align: left; /* Align text to left for a more standard form layout */
         }
-        input, button { font-size: 1em; margin-top: 8px; }
-        #player-count { margin-top: 16px; font-weight: bold; }
+
+        .lobby-container h2 {
+            color: #61dafb; /* A highlight color, e.g., light blue */
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 25px;
+            font-size: 2em;
+            border-bottom: 1px solid rgba(100, 100, 120, 0.3);
+            padding-bottom: 15px;
+        }
+
+        .lobby-container label {
+            display: block;
+            margin-bottom: 8px;
+            color: #bbb;
+            font-size: 0.9em;
+        }
+
+        .lobby-container input[type="text"] {
+            width: calc(100% - 22px); /* Full width accounting for padding and border */
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #444;
+            background-color: #252530;
+            color: #e0e0e0;
+            border-radius: 5px;
+            font-size: 1em;
+            box-sizing: border-box; /* Ensures padding and border are included in the width */
+        }
+
+        .lobby-container input[type="text"]:disabled {
+            background-color: #30303a;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        .lobby-container #player-count,
+        .lobby-container #lobby-status {
+            font-size: 1.1em;
+            margin-bottom: 12px;
+            padding: 8px;
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 4px;
+        }
+
+        .lobby-container #lobby-countdown {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ffc107; /* Amber color for countdown */
+            text-align: center;
+            margin-top: 15px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: rgba(255, 193, 7, 0.1);
+            border-radius: 4px;
+        }
+
+        .lobby-container #chat-area {
+            background: #1c1c24; /* Darker chat background */
+            border: 1px solid #333;
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 150px; /* Slightly more height */
+            overflow-y: auto;
+            font-size: 0.95em;
+            line-height: 1.4;
+            color: #ccc; /* Default chat text color */
+        }
+
+        .lobby-container #chat-area div {
+            padding: 4px 0;
+            word-wrap: break-word; /* Ensure long messages wrap */
+        }
+
+        .lobby-container #chat-area div[style*="italic"] { /* System messages */
+            color: #88aaff; /* Lighter blue for system messages */
+        }
+
+        .lobby-container #chat-input {
+            width: calc(75% - 12px - 2%); /* Adjusted width considering margin-right */
+            padding: 10px;
+            margin-top: 10px;
+            margin-right: 2%;
+            border: 1px solid #444;
+            background-color: #252530;
+            color: #e0e0e0;
+            border-radius: 5px;
+            font-size: 1em;
+            box-sizing: border-box;
+        }
+
+        .lobby-container #chat-send {
+            width: 23%; /* Adjust width */
+            padding: 10px;
+            background-color: #61dafb;
+            color: #1a1a20;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            transition: background-color 0.2s ease;
+            box-sizing: border-box;
+            vertical-align: top; /* Align with the input field */
+            margin-top: 10px; /* Match chat-input margin-top */
+        }
+
+        .lobby-container #chat-send:hover {
+            background-color: #52c5e8;
+        }
+
+        .lobby-container #chat-send:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+        }
         
-        /* Stats bar styling */
+        /* Your existing styles for #player-stats-bar if any */
         #player-stats-bar {
-            display: none; /* Initially hidden */
+            /* ... your existing styles ... */
+            /* Example from your index.html snippet */
+            display: none; 
+            position: fixed;
+            top: 10px;
+            left: 10px;
             background: rgba(0, 0, 0, 0.5);
             border-radius: 4px;
             padding: 5px;
             backdrop-filter: blur(5px);
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            z-index: 100; /* Ensure it's above other elements if needed */
+        }
+
+        /* Styles for the Death Overlay */
+        #death-overlay {
+            position: fixed; /* Position relative to the viewport */
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* Center it precisely */
+            background-color: rgba(0, 0, 0, 0.85); /* Dark semi-transparent background */
+            color: #ff4444; /* Red text for "You Died!" */
+            padding: 30px 40px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+            text-align: center;
+            z-index: 1000; /* Ensure it's on top of other game elements */
+            display: none; /* Initially hidden, shown by JavaScript */
+        }
+
+        #death-overlay h3 {
+            margin-top: 0;
+            font-size: 2.5em;
+            color: #ff0000;
+        }
+
+        #death-overlay p {
+            font-size: 1.2em;
+            color: #f0f0f0; /* Lighter color for the subtext */
+            margin-bottom: 0;
         }
     </style>
 </head>

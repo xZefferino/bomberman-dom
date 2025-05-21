@@ -14,8 +14,8 @@ export function renderPowerUpSprite({ type }) {
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 30px;
-            height: 30px;
+            width: 35px;
+            height: 35px;
             object-fit: contain;
             pointer-events: none;
             user-select: none;

@@ -57,7 +57,7 @@ func (s *Server) SetupRoutes() {
 
     
     // Serve static files
-    s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("./bomberman-web/")))
+    s.Router.PathPrefix("/").Handler(http.FileServer(http.Dir("../bomberman-web/")))
 }
 
 // StartWebSocketHub starts the WebSocket hub
